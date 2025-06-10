@@ -43,7 +43,8 @@ def main():
             f"{backend_url}/api/auth/register",
             json=test_user,
             timeout=10
-        )        if response.status_code in [200, 201]:
+        )
+        if response.status_code in [200, 201]:
             print("✅ 用户注册成功")
             user_data = response.json()
             print(f"   用户ID: {user_data.get('id')}")
