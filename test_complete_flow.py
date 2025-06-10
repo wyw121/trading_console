@@ -43,9 +43,8 @@ def main():
         
         # 步骤2: 用户注册
         print(f"\n步骤 {step}: 用户注册...")
-        print(f"   正在注册用户: {test_user['username']}")
-        response = requests.post(
-            f"{backend_url}/auth/register",
+        print(f"   正在注册用户: {test_user['username']}")        response = requests.post(
+            f"{backend_url}/api/auth/register",
             json=test_user,
             headers={"Content-Type": "application/json"},
             timeout=10
@@ -70,9 +69,8 @@ def main():
         login_data = {
             "username": test_user["username"],
             "password": test_user["password"]
-        }
-        response = requests.post(
-            f"{backend_url}/auth/login",
+        }        response = requests.post(
+            f"{backend_url}/api/auth/login",
             data=login_data,  # OAuth2 expects form data
             timeout=10
         )
@@ -95,7 +93,7 @@ def main():
             "Content-Type": "application/json"
         }
         response = requests.get(
-            f"{backend_url}/auth/me",
+            f"{backend_url}/api/auth/me",
             headers=headers,
             timeout=10
         )
@@ -123,9 +121,8 @@ def main():
             "api_passphrase": None,
             "is_testnet": True
         }
-        
-        response = requests.post(
-            f"{backend_url}/exchanges/",
+          response = requests.post(
+            f"{backend_url}/api/exchanges/",
             json=exchange_data,
             headers=headers,
             timeout=10
@@ -145,9 +142,8 @@ def main():
         step += 1
         
         # 步骤6: 查看交易所账户列表
-        print(f"\n步骤 {step}: 查看交易所账户列表...")
-        response = requests.get(
-            f"{backend_url}/exchanges/",
+        print(f"\n步骤 {step}: 查看交易所账户列表...")        response = requests.get(
+            f"{backend_url}/api/exchanges/",
             headers=headers,
             timeout=10
         )
@@ -180,9 +176,8 @@ def main():
             "ma_period": 60,
             "exchange_account_id": exchange_account_id
         }
-        
-        response = requests.post(
-            f"{backend_url}/strategies/",
+          response = requests.post(
+            f"{backend_url}/api/strategies/",
             json=strategy_data,
             headers=headers,
             timeout=10
@@ -267,9 +262,8 @@ def main():
         
         # 清理交易所账户
         if exchange_account_id:
-            try:
-                response = requests.delete(
-                    f"{backend_url}/exchanges/{exchange_account_id}",
+            try:                response = requests.delete(
+                    f"{backend_url}/api/exchanges/{exchange_account_id}",
                     headers=headers,
                     timeout=10
                 )
