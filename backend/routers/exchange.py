@@ -47,7 +47,7 @@ async def create_exchange_account(
     response.api_key = f"{response.api_key[:8]}..." if len(response.api_key) > 8 else "***"
     return response
 
-@router.get("/accounts", response_model=List[schemas.ExchangeAccountResponse])
+@router.get("/", response_model=List[schemas.ExchangeAccountResponse])
 async def get_exchange_accounts(
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db)

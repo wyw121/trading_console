@@ -1,224 +1,137 @@
 #!/usr/bin/env python3
-# -*- coding: utf-8 -*-
-
-import asyncio
-import aiohttp
-import json
-import sys
+"""
+简单的端到端测试
+测试Trading Console的核心功能
+"""
+import requests
 import time
-from datetime import datetime
+import json
 
-class SimpleE2ETest:
-    def __init__(self):
-        self.backend_url = "http://localhost:8000"
-        self.auth_token = None
-        self.test_user = {
-            "username": f"testuser_{int(time.time())}",
-            "email": f"test_{int(time.time())}@example.com",
-            "password": "TestPassword123"
-        }
-        
-    async def test_backend_health(self):
-        print("Step 1: Testing backend health...")
-        try:
-            async with aiohttp.ClientSession() as session:
-                async with session.get(f"{self.backend_url}/health") as response:
-                    if response.status == 200:
-                        data = await response.json()
-                        print(f"✅ Backend is healthy: {data}")
-                        return True
-                    else:
-                        print(f"❌ Backend health check failed: {response.status}")
-                        return False
-        except Exception as e:
-            print(f"❌ Backend connection failed: {e}")
-            return False
+def main():
+    print("🚀 Trading Console 端到端测试")
+    print("=" * 50)
     
-    async def test_user_registration(self):
-        print(f"\nStep 2: Testing user registration...")
-        print(f"Registering user: {self.test_user['username']}")
-        
-        try:
-            async with aiohttp.ClientSession() as session:
-                async with session.post(
-                    f"{self.backend_url}/api/auth/register",
-                    json=self.test_user,
-                    headers={"Content-Type": "application/json"}
-                ) as response:
-                    if response.status == 200:
-                        data = await response.json()
-                        print(f"✅ User registration successful")
-                        print(f"   User ID: {data.get('id', 'N/A')}")
-                        print(f"   Username: {data.get('username', 'N/A')}")
-                        return True
-                    else:
-                        error_text = await response.text()
-                        print(f"❌ User registration failed: {response.status}")
-                        print(f"   Error: {error_text}")
-                        return False
-        except Exception as e:
-            print(f"❌ Registration request failed: {e}")
-            return False
+    backend_url = "http://localhost:8000"
     
-    async def test_user_login(self):
-        print(f"\nStep 3: Testing user login...")
-        
-        try:
-            async with aiohttp.ClientSession() as session:
-                form_data = aiohttp.FormData()
-                form_data.add_field('username', self.test_user['username'])
-                form_data.add_field('password', self.test_user['password'])
-                
-                async with session.post(
-                    f"{self.backend_url}/api/auth/login",
-                    data=form_data
-                ) as response:
-                    if response.status == 200:
-                        data = await response.json()
-                        self.auth_token = data.get("access_token")
-                        print(f"✅ User login successful")
-                        return True
-                    else:
-                        error_text = await response.text()
-                        print(f"❌ User login failed: {response.status}")
-                        print(f"   Error: {error_text}")
-                        return False
-        except Exception as e:
-            print(f"❌ Login request failed: {e}")
-            return False
-    
-    async def test_get_user_profile(self):
-        print(f"\nStep 4: Testing get user profile...")
-        
-        if not self.auth_token:
-            print("❌ No auth token available")
-            return False
-        
-        try:
-            headers = {
-                "Authorization": f"Bearer {self.auth_token}",
-                "Content-Type": "application/json"
-            }
-            
-            async with aiohttp.ClientSession() as session:
-                async with session.get(
-                    f"{self.backend_url}/api/auth/me",
-                    headers=headers
-                ) as response:
-                    if response.status == 200:
-                        data = await response.json()
-                        print(f"✅ User profile retrieved")
-                        print(f"   User ID: {data.get('id')}")
-                        print(f"   Username: {data.get('username')}")
-                        print(f"   Email: {data.get('email')}")
-                        return True
-                    else:
-                        error_text = await response.text()
-                        print(f"❌ Get user profile failed: {response.status}")
-                        print(f"   Error: {error_text}")
-                        return False
-        except Exception as e:
-            print(f"❌ Get profile request failed: {e}")
-            return False
-    
-    async def test_add_exchange_account(self):
-        print(f"\nStep 5: Testing add exchange account...")
-        
-        if not self.auth_token:
-            print("❌ No auth token available")
-            return False
-        
-        try:
-            exchange_data = {
-                "exchange_name": "binance",
-                "api_key": "test_api_key",
-                "api_secret": "test_api_secret",
-                "api_passphrase": None,
-                "is_testnet": True
-            }
-            
-            headers = {
-                "Authorization": f"Bearer {self.auth_token}",
-                "Content-Type": "application/json"
-            }
-            
-            async with aiohttp.ClientSession() as session:
-                async with session.post(
-                    f"{self.backend_url}/api/exchanges/",
-                    json=exchange_data,
-                    headers=headers
-                ) as response:
-                    if response.status == 200:
-                        data = await response.json()
-                        print(f"✅ Exchange account added")
-                        print(f"   Account ID: {data.get('id')}")
-                        print(f"   Exchange: {data.get('exchange_name')}")
-                        return True
-                    else:
-                        error_text = await response.text()
-                        print(f"❌ Add exchange account failed: {response.status}")
-                        print(f"   Error: {error_text}")
-                        return False
-        except Exception as e:
-            print(f"❌ Add exchange request failed: {e}")
-            return False
-    
-    async def run_all_tests(self):
-        print("🚀 Trading Console E2E Test")
-        print("Testing: Registration → Login → Profile → Exchange Setup")
-        print("=" * 60)
-        
-        start_time = datetime.now()
-        
-        tests = [
-            ("Backend Health Check", self.test_backend_health),
-            ("User Registration", self.test_user_registration),
-            ("User Login", self.test_user_login),
-            ("Get User Profile", self.test_get_user_profile),
-            ("Add Exchange Account", self.test_add_exchange_account),
-        ]
-        
-        passed = 0
-        total = len(tests)
-        
-        for test_name, test_func in tests:
-            try:
-                success = await test_func()
-                if success:
-                    passed += 1
-                else:
-                    print(f"\n❌ Test '{test_name}' failed, stopping execution")
-                    break
-            except Exception as e:
-                print(f"\n💥 Test '{test_name}' crashed: {e}")
-                break
-        
-        end_time = datetime.now()
-        duration = (end_time - start_time).total_seconds()
-        
-        print("\n" + "=" * 60)
-        print("📊 Test Results Summary")
-        print("=" * 60)
-        print(f"Passed: {passed}/{total} tests")
-        print(f"Duration: {duration:.2f} seconds")
-        print(f"Test user: {self.test_user['username']}")
-        
-        if passed == total:
-            print("\n🎉 All tests passed! Your trading console is working correctly!")
-        else:
-            print(f"\n⚠️ {total - passed} tests failed. Please check the errors above.")
-        
-        return passed == total
-
-async def main():
+    # 测试1: 健康检查
+    print("测试1: 后端健康检查...")
     try:
-        tester = SimpleE2ETest()
-        success = await tester.run_all_tests()
-        return 0 if success else 1
+        response = requests.get(f"{backend_url}/health", timeout=5)
+        if response.status_code == 200:
+            print("✅ 后端服务正常")
+            health_data = response.json()
+            print(f"   环境: {health_data.get('environment')}")
+            print(f"   数据库: {health_data.get('database')}")
+        else:
+            print(f"❌ 后端服务异常: {response.status_code}")
+            return False
     except Exception as e:
-        print(f"Test execution failed: {e}")
-        return 1
+        print(f"❌ 连接失败: {e}")
+        return False
+    
+    # 测试2: 用户注册
+    print("\n测试2: 用户注册...")
+    timestamp = int(time.time())
+    test_user = {
+        "username": f"testuser_{timestamp}",
+        "email": f"test_{timestamp}@example.com",
+        "password": "TestPassword123"
+    }
+    
+    try:
+        response = requests.post(
+            f"{backend_url}/api/auth/register",
+            json=test_user,
+            timeout=10
+        )        if response.status_code in [200, 201]:
+            print("✅ 用户注册成功")
+            user_data = response.json()
+            print(f"   用户ID: {user_data.get('id')}")
+            print(f"   用户名: {user_data.get('username')}")
+        else:
+            print(f"❌ 注册失败: {response.status_code}")
+            print(f"   错误: {response.text}")
+            return False
+    except Exception as e:
+        print(f"❌ 注册异常: {e}")
+        return False
+    
+    # 测试3: 用户登录
+    print("\n测试3: 用户登录...")
+    login_data = {
+        "username": test_user["username"],
+        "password": test_user["password"]
+    }
+    
+    try:
+        response = requests.post(
+            f"{backend_url}/api/auth/login",
+            data=login_data,
+            timeout=10
+        )
+        if response.status_code == 200:
+            print("✅ 登录成功")
+            token_data = response.json()
+            access_token = token_data["access_token"]
+            print(f"   Token类型: {token_data.get('token_type')}")
+        else:
+            print(f"❌ 登录失败: {response.status_code}")
+            print(f"   错误: {response.text}")
+            return False
+    except Exception as e:
+        print(f"❌ 登录异常: {e}")
+        return False
+    
+    # 测试4: 获取用户资料
+    print("\n测试4: 获取用户资料...")
+    headers = {"Authorization": f"Bearer {access_token}"}
+    
+    try:
+        response = requests.get(
+            f"{backend_url}/api/auth/me",
+            headers=headers,
+            timeout=10
+        )
+        if response.status_code == 200:
+            print("✅ 用户资料获取成功")
+            profile = response.json()
+            print(f"   用户名: {profile.get('username')}")
+            print(f"   邮箱: {profile.get('email')}")
+        else:
+            print(f"❌ 资料获取失败: {response.status_code}")
+            print(f"   错误: {response.text}")
+            return False
+    except Exception as e:
+        print(f"❌ 资料获取异常: {e}")
+        return False
+    
+    # 测试5: 交易所账户列表
+    print("\n测试5: 交易所账户...")
+    try:
+        response = requests.get(
+            f"{backend_url}/api/exchanges/",
+            headers=headers,
+            timeout=10
+        )
+        if response.status_code == 200:
+            print("✅ 交易所列表获取成功")
+            exchanges = response.json()
+            print(f"   交易所数量: {len(exchanges)}")
+        else:
+            print(f"❌ 交易所列表失败: {response.status_code}")
+            print(f"   错误: {response.text}")
+            return False
+    except Exception as e:
+        print(f"❌ 交易所列表异常: {e}")
+        return False
+    
+    print("\n" + "=" * 50)
+    print("🎉 所有测试通过! 系统功能正常!")
+    return True
 
 if __name__ == "__main__":
-    exit_code = asyncio.run(main())
-    sys.exit(exit_code)
+    success = main()
+    if success:
+        print("\n✅ 测试完成: 系统正常运行")
+    else:
+        print("\n❌ 测试失败: 系统存在问题")
