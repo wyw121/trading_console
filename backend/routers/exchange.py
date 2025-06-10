@@ -6,7 +6,7 @@ import schemas
 from database import get_db, User, ExchangeAccount
 from auth import verify_token
 
-router = APIRouter(prefix="/exchange", tags=["exchange"])
+router = APIRouter(prefix="/exchanges", tags=["exchange"])
 security = HTTPBearer()
 
 def get_current_user(credentials: HTTPAuthorizationCredentials = Depends(security), db: Session = Depends(get_db)):
@@ -22,7 +22,7 @@ def get_current_user(credentials: HTTPAuthorizationCredentials = Depends(securit
         raise HTTPException(status_code=404, detail="User not found")
     return user
 
-@router.post("/accounts", response_model=schemas.ExchangeAccountResponse)
+@router.post("/", response_model=schemas.ExchangeAccountResponse)
 async def create_exchange_account(
     account: schemas.ExchangeAccountCreate,
     current_user: User = Depends(get_current_user),

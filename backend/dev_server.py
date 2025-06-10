@@ -10,6 +10,9 @@ from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 from database import Base
 
+# Import routers
+from routers import auth, exchange, strategies, trades, dashboard
+
 # 设置SQLite数据库
 DATABASE_URL = "sqlite:///./trading_console_dev.db"
 engine = create_engine(DATABASE_URL, connect_args={"check_same_thread": False})
@@ -30,9 +33,15 @@ app.add_middleware(
     CORSMiddleware,
     allow_origins=["http://localhost:3000", "http://localhost:5173", "http://localhost:8080"],
     allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
+    allow_methods=["*"],    allow_headers=["*"],
 )
+
+# Include routers with /api prefix
+app.include_router(auth.router, prefix="/api")
+app.include_router(exchange.router, prefix="/api")
+app.include_router(strategies.router, prefix="/api")
+app.include_router(trades.router, prefix="/api")
+app.include_router(dashboard.router, prefix="/api")
 
 # 基础路由
 @app.get("/")

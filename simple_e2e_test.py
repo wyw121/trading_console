@@ -4,6 +4,7 @@
 import asyncio
 import aiohttp
 import json
+import sys
 import time
 from datetime import datetime
 
@@ -40,15 +41,15 @@ class SimpleE2ETest:
         try:
             async with aiohttp.ClientSession() as session:
                 async with session.post(
-                    f"{self.backend_url}/auth/register",
+                    f"{self.backend_url}/api/auth/register",
                     json=self.test_user,
                     headers={"Content-Type": "application/json"}
                 ) as response:
                     if response.status == 200:
                         data = await response.json()
-                        self.auth_token = data.get("access_token")
                         print(f"✅ User registration successful")
-                        print(f"   Token: {self.auth_token[:20]}...")
+                        print(f"   User ID: {data.get('id', 'N/A')}")
+                        print(f"   Username: {data.get('username', 'N/A')}")
                         return True
                     else:
                         error_text = await response.text()
@@ -69,7 +70,7 @@ class SimpleE2ETest:
                 form_data.add_field('password', self.test_user['password'])
                 
                 async with session.post(
-                    f"{self.backend_url}/auth/login",
+                    f"{self.backend_url}/api/auth/login",
                     data=form_data
                 ) as response:
                     if response.status == 200:
@@ -101,7 +102,7 @@ class SimpleE2ETest:
             
             async with aiohttp.ClientSession() as session:
                 async with session.get(
-                    f"{self.backend_url}/auth/me",
+                    f"{self.backend_url}/api/auth/me",
                     headers=headers
                 ) as response:
                     if response.status == 200:
@@ -143,7 +144,7 @@ class SimpleE2ETest:
             
             async with aiohttp.ClientSession() as session:
                 async with session.post(
-                    f"{self.backend_url}/exchanges/",
+                    f"{self.backend_url}/api/exchanges/",
                     json=exchange_data,
                     headers=headers
                 ) as response:

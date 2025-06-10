@@ -4,7 +4,7 @@ from sqlalchemy.orm import Session
 from datetime import timedelta
 import schemas
 from database import get_db, User
-from auth import verify_password, get_password_hash, create_access_token, ACCESS_TOKEN_EXPIRE_MINUTES
+from auth import verify_password, get_password_hash, create_access_token, verify_token, ACCESS_TOKEN_EXPIRE_MINUTES
 
 router = APIRouter(prefix="/auth", tags=["authentication"])
 security = HTTPBearer()
