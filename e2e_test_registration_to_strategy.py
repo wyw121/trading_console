@@ -25,8 +25,7 @@ class TradingConsoleE2ETest:
             "password": "SecurePassword123!"
         }
         self.results = []
-        
-    def log_step(self, step_name, success, details=""):
+          def log_step(self, step_name, success, details=""):
         """记录测试步骤结果"""
         status = "✅ 通过" if success else "❌ 失败"
         print(f"{status} {step_name}")
@@ -37,7 +36,7 @@ class TradingConsoleE2ETest:
     async def step_1_check_backend_health(self):
         """步骤1：检查后端服务健康状态"""
         print("\n🔍 步骤1：检查后端服务状态...")
-          try:
+        try:
             async with aiohttp.ClientSession() as session:
                 async with session.get(f"{self.backend_url}/health") as response:
                     if response.status == 200:
@@ -49,6 +48,7 @@ class TradingConsoleE2ETest:
                         return False
         except Exception as e:
             self.log_step("后端健康检查", False, f"连接错误: {str(e)}")
+            return False
             return False
     
     async def step_2_user_registration(self):
