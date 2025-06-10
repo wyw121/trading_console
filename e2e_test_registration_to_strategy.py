@@ -22,10 +22,10 @@ class TradingConsoleE2ETest:
         self.test_user = {
             "username": f"e2e_user_{int(time.time())}",
             "email": f"e2e_{int(time.time())}@example.com",
-            "password": "SecurePassword123!"
-        }
+            "password": "SecurePassword123!"        }
         self.results = []
-          def log_step(self, step_name, success, details=""):
+        
+    def log_step(self, step_name, success, details=""):
         """记录测试步骤结果"""
         status = "✅ 通过" if success else "❌ 失败"
         print(f"{status} {step_name}")
