@@ -40,10 +40,10 @@ def main():
             print(f"❌ 后端服务异常: {response.status_code}")
             return False
         step += 1
-        
-        # 步骤2: 用户注册
+          # 步骤2: 用户注册
         print(f"\n步骤 {step}: 用户注册...")
-        print(f"   正在注册用户: {test_user['username']}")        response = requests.post(
+        print(f"   正在注册用户: {test_user['username']}")
+        response = requests.post(
             f"{backend_url}/api/auth/register",
             json=test_user,
             headers={"Content-Type": "application/json"},
@@ -63,13 +63,13 @@ def main():
             print(f"   错误信息: {response.text}")
             return False
         step += 1
-        
-        # 步骤3: 用户登录
+          # 步骤3: 用户登录
         print(f"\n步骤 {step}: 用户登录验证...")
         login_data = {
             "username": test_user["username"],
             "password": test_user["password"]
-        }        response = requests.post(
+        }
+        response = requests.post(
             f"{backend_url}/api/auth/login",
             data=login_data,  # OAuth2 expects form data
             timeout=10
@@ -117,11 +117,11 @@ def main():
         exchange_data = {
             "exchange_name": "binance",
             "api_key": "test_api_key_for_e2e_testing",
-            "api_secret": "test_api_secret_for_e2e_testing",
-            "api_passphrase": None,
+            "api_secret": "test_api_secret_for_e2e_testing",            "api_passphrase": None,
             "is_testnet": True
         }
-          response = requests.post(
+        
+        response = requests.post(
             f"{backend_url}/api/exchanges/",
             json=exchange_data,
             headers=headers,
@@ -140,9 +140,9 @@ def main():
             print(f"   错误信息: {response.text}")
             return False
         step += 1
-        
-        # 步骤6: 查看交易所账户列表
-        print(f"\n步骤 {step}: 查看交易所账户列表...")        response = requests.get(
+          # 步骤6: 查看交易所账户列表
+        print(f"\n步骤 {step}: 查看交易所账户列表...")
+        response = requests.get(
             f"{backend_url}/api/exchanges/",
             headers=headers,
             timeout=10
@@ -172,11 +172,11 @@ def main():
             "stop_loss_percent": 2.0,
             "take_profit_percent": 3.0,
             "bb_period": 20,
-            "bb_deviation": 2.0,
-            "ma_period": 60,
+            "bb_deviation": 2.0,            "ma_period": 60,
             "exchange_account_id": exchange_account_id
         }
-          response = requests.post(
+        
+        response = requests.post(
             f"{backend_url}/api/strategies/",
             json=strategy_data,
             headers=headers,
@@ -259,10 +259,10 @@ def main():
                     print(f"⚠️ 删除测试策略失败: {response.status_code}")
             except Exception as e:
                 print(f"⚠️ 删除测试策略时出错: {e}")
-        
-        # 清理交易所账户
+          # 清理交易所账户
         if exchange_account_id:
-            try:                response = requests.delete(
+            try:
+                response = requests.delete(
                     f"{backend_url}/api/exchanges/{exchange_account_id}",
                     headers=headers,
                     timeout=10
