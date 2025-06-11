@@ -18,11 +18,11 @@ class TradingConsoleE2ETest:
         self.auth_token = None
         self.user_id = None
         self.exchange_account_id = None
-        self.strategy_id = None
-        self.test_user = {
+        self.strategy_id = None        self.test_user = {
             "username": f"e2e_user_{int(time.time())}",
             "email": f"e2e_{int(time.time())}@example.com",
-            "password": "SecurePassword123!"        }
+            "password": "SecurePassword123!"
+        }
         self.results = []
         
     def log_step(self, step_name, success, details=""):
@@ -45,10 +45,8 @@ class TradingConsoleE2ETest:
                         return True
                     else:
                         self.log_step("后端健康检查", False, f"HTTP状态码: {response.status}")
-                        return False
-        except Exception as e:
+                        return False        except Exception as e:
             self.log_step("后端健康检查", False, f"连接错误: {str(e)}")
-            return False
             return False
     
     async def step_2_user_registration(self):
