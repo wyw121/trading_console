@@ -10,5 +10,7 @@
 			"path": "backend"
 		}
 	],
-	"settings": {}
+	"settings": {
+		"powershell.cwd": "trading_console"
+	}
 }
