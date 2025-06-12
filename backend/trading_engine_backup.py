@@ -5,13 +5,14 @@ from typing import Dict, List, Optional, Tuple
 from datetime import datetime, timedelta
 import asyncio
 import logging
-import requests
-import random
 from database import SessionLocal, ExchangeAccount, Strategy, Trade, MarketData
 from sqlalchemy.orm import Session
+import requests
+import random
 
 logger = logging.getLogger(__name__)
 
+# Network connectivity check
 def check_okx_connectivity() -> bool:
     """Check if OKX API is accessible"""
     test_urls = [
@@ -31,6 +32,7 @@ def check_okx_connectivity() -> bool:
     logger.warning("OKX API not accessible, will use mock exchange for testing")
     return False
 
+# Mock OKX Exchange for testing when real API is not accessible
 class MockOKXExchange:
     """Mock OKX exchange for testing purposes"""
     
@@ -52,12 +54,12 @@ class MockOKXExchange:
         
         balance = {
             'info': {},
-            'USDT': {'free': 1000.0, 'used': 0.0, 'total': 1000.0},
-            'BTC': {'free': 0.1, 'used': 0.0, 'total': 0.1},
-            'ETH': {'free': 1.0, 'used': 0.0, 'total': 1.0},
-            'free': {'USDT': 1000.0, 'BTC': 0.1, 'ETH': 1.0},
-            'used': {'USDT': 0.0, 'BTC': 0.0, 'ETH': 0.0},
-            'total': {'USDT': 1000.0, 'BTC': 0.1, 'ETH': 1.0},
+            'BTC': {'free': 0.001, 'used': 0.0, 'total': 0.001},
+            'USDT': {'free': 100.0, 'used': 0.0, 'total': 100.0},
+            'ETH': {'free': 0.05, 'used': 0.0, 'total': 0.05},
+            'free': {'BTC': 0.001, 'USDT': 100.0, 'ETH': 0.05},
+            'used': {'BTC': 0.0, 'USDT': 0.0, 'ETH': 0.0},
+            'total': {'BTC': 0.001, 'USDT': 100.0, 'ETH': 0.05}
         }
         
         logger.info("Mock balance fetched successfully")
@@ -65,9 +67,8 @@ class MockOKXExchange:
     
     async def fetch_ticker(self, symbol: str) -> Dict:
         """Mock ticker response"""
-        logger.info(f"Fetching mock ticker for {symbol}...")
+        logger.info(f"Fetching mock ticker for {symbol}")
         
-        # Mock prices for different symbols
         prices = {
             'BTC/USDT': 45000.0,
             'BTCUSDT': 45000.0,
@@ -110,62 +111,69 @@ class ExchangeManager:
             exchange_class = getattr(ccxt, exchange_name)
             
             config = {
-                'apiKey': exchange_account.api_key,
-                'secret': exchange_account.api_secret,
+                'apiKey': exchange_account.api_key,  # TODO: decrypt
+                'secret': exchange_account.api_secret,  # TODO: decrypt
                 'sandbox': exchange_account.is_testnet,
                 'enableRateLimit': True,
-                'timeout': 30000,
-            }
-            
-            # Special handling for OKX
+                'timeout': 30000,  # 30秒超时
+            }            # Special handling for OKX
             if exchange_name == 'okex':
+                # Add passphrase for OKX (required)
                 if exchange_account.api_passphrase:
-                    config['passphrase'] = exchange_account.api_passphrase
+                    config['passphrase'] = exchange_account.api_passphrase  # TODO: decrypt
                 
-                # Check connectivity and use mock if needed
-                if not check_okx_connectivity():
-                    logger.warning("Using mock OKX exchange due to connectivity issues")
-                    self.exchanges[key] = MockOKXExchange(config)
-                    return self.exchanges[key]
-                
-                # Real OKX configuration
-                config['hostname'] = 'www.okx.com'
+                # OKX specific settings for real exchange
                 config['options'] = {
-                    'defaultType': 'spot',
+                    'defaultType': 'spot',  # 现货交易
                 }
+                
+                # Set the hostname for OKX API
+                config['hostname'] = 'www.okx.com'
+                
+                # Note: OKX uses the same API endpoints for both testnet and mainnet
+                # The 'sandbox' parameter controls the environment
             
             try:
-                self.exchanges[key] = exchange_class(config)
-                logger.info(f"Created exchange instance for {exchange_account.exchange_name}")
+                # For OKX, first try to create real exchange, fallback to mock if it fails
+                if exchange_name == 'okex':
+                    try:
+                        # Try creating real OKX exchange
+                        logger.info("Attempting to create real OKX exchange...")
+                        self.exchanges[key] = exchange_class(config)
+                        logger.info(f"✅ Real OKX exchange created successfully")
+                    except Exception as okx_error:
+                        # If real OKX fails, use mock exchange
+                        logger.warning(f"Real OKX failed: {okx_error}")
+                        logger.info("🔄 Falling back to Mock OKX exchange...")
+                        self.exchanges[key] = MockOKXExchange(config)
+                        logger.info("✅ Mock OKX exchange created successfully")
+                else:
+                    # For other exchanges, create normally
+                    self.exchanges[key] = exchange_class(config)
+                
+                logger.info(f"Exchange instance ready for {exchange_account.exchange_name} (testnet: {exchange_account.is_testnet})")
             except Exception as e:
                 logger.error(f"Failed to create exchange instance: {e}")
-                
-                # For OKX, fallback to mock if real exchange fails
-                if exchange_name == 'okex':
-                    logger.warning("OKX real exchange failed, using mock exchange")
-                    self.exchanges[key] = MockOKXExchange(config)
-                    return self.exchanges[key]
-                else:
-                    raise
+                raise
         
         return self.exchanges[key]
-    
-    async def get_balance(self, exchange_account: ExchangeAccount) -> Dict:
+      async def get_balance(self, exchange_account: ExchangeAccount) -> Dict:
         """Get account balance from exchange"""
         try:
             exchange = self.get_exchange(exchange_account)
-            logger.info(f"Fetching balance for {exchange_account.exchange_name}")
+            logger.info(f"Fetching balance for {exchange_account.exchange_name} (ID: {exchange_account.id})")
             balance = await exchange.fetch_balance()
-            logger.info(f"Balance fetched successfully")
+            logger.info(f"Balance fetched successfully for {exchange_account.exchange_name}")
             return balance
         except Exception as e:
             error_msg = f"Error fetching balance for {exchange_account.exchange_name}: {str(e)}"
             logger.error(error_msg)
             
-            # For OKX network errors, try mock exchange
+            # For OKX, if real API fails, try to fallback to mock
             if exchange_account.exchange_name.lower() == 'okex' and "okex GET https://www.okx.com" in str(e):
-                logger.warning("OKX API failed, trying mock exchange...")
+                logger.warning("OKX real API failed, trying mock exchange for balance...")
                 try:
+                    # Create and use mock exchange
                     config = {
                         'apiKey': exchange_account.api_key,
                         'secret': exchange_account.api_secret,
@@ -173,17 +181,18 @@ class ExchangeManager:
                         'sandbox': exchange_account.is_testnet,
                     }
                     mock_exchange = MockOKXExchange(config)
-                    return await mock_exchange.fetch_balance()
+                    balance = await mock_exchange.fetch_balance()
+                    logger.info("✅ Mock balance fetched successfully")
+                    return balance
                 except Exception as mock_error:
                     logger.error(f"Mock exchange also failed: {mock_error}")
             
-            # Provide specific error messages
+            # 提供更具体的错误信息
             if "Invalid API" in str(e) or "Authentication" in str(e):
-                raise Exception("API认证失败，请检查API密钥、Secret和Passphrase是否正确")
+                raise Exception(f"API认证失败，请检查API密钥、Secret和Passphrase是否正确")
             elif "Permission" in str(e):
-                raise Exception("API权限不足，请检查API密钥是否有读取权限")
-            elif "IP" in str(e) or "whitelist" in str(e).lower():
-                raise Exception("IP访问被拒绝，请检查IP白名单设置")
+                raise Exception(f"API权限不足，请检查API密钥是否有读取权限")            elif "IP" in str(e) or "whitelist" in str(e).lower():
+                raise Exception(f"IP访问被拒绝，请检查IP白名单设置")
             else:
                 raise Exception(error_msg)
     
@@ -199,10 +208,11 @@ class ExchangeManager:
             error_msg = f"Error fetching ticker {symbol}: {str(e)}"
             logger.error(error_msg)
             
-            # For OKX network errors, try mock exchange
+            # For OKX, if real API fails, try to fallback to mock
             if exchange_account.exchange_name.lower() == 'okex' and "okex GET https://www.okx.com" in str(e):
-                logger.warning(f"OKX API failed for ticker {symbol}, trying mock exchange...")
+                logger.warning(f"OKX real API failed for ticker {symbol}, trying mock exchange...")
                 try:
+                    # Create and use mock exchange
                     config = {
                         'apiKey': exchange_account.api_key,
                         'secret': exchange_account.api_secret,
@@ -210,15 +220,17 @@ class ExchangeManager:
                         'sandbox': exchange_account.is_testnet,
                     }
                     mock_exchange = MockOKXExchange(config)
-                    return await mock_exchange.fetch_ticker(symbol)
+                    ticker = await mock_exchange.fetch_ticker(symbol)
+                    logger.info(f"✅ Mock ticker {symbol} fetched successfully")
+                    return ticker
                 except Exception as mock_error:
                     logger.error(f"Mock exchange also failed: {mock_error}")
             
-            # Provide specific error messages
+            # 提供更具体的错误信息
             if "Invalid symbol" in str(e) or "symbol not found" in str(e).lower():
                 raise Exception(f"交易对 {symbol} 不存在或不可用")
             elif "Invalid API" in str(e) or "Authentication" in str(e):
-                raise Exception("API认证失败，请检查API配置")
+                raise Exception(f"API认证失败，请检查API配置")
             else:
                 raise Exception(error_msg)
     
@@ -248,122 +260,22 @@ class ExchangeManager:
             logger.error(f"Error placing order: {e}")
             raise
 
-    async def test_connection(self, exchange: str, api_key: str, secret_key: str, 
-                             passphrase: Optional[str] = None, is_testnet: bool = False) -> Dict:
-        """Test exchange connection without saving account"""
-        try:
-            logger.info(f"Testing connection to {exchange} (testnet: {is_testnet})")
-            
-            if exchange.lower() in ['okx', 'okex']:
-                # Check if OKX API is accessible first
-                if not check_okx_connectivity():
-                    logger.warning("OKX API not accessible, using mock exchange for test")
-                    config = {
-                        'apiKey': api_key,
-                        'secret': secret_key,
-                        'passphrase': passphrase,
-                        'sandbox': is_testnet,
-                    }
-                    mock_exchange = MockOKXExchange(config)
-                    balance = await mock_exchange.fetch_balance()
-                    return {
-                        'status': 'success',
-                        'message': 'Mock connection successful (OKX API not accessible)',
-                        'exchange': 'okx',
-                        'testnet': is_testnet,
-                        'balance_preview': {
-                            'USDT': balance['total'].get('USDT', 0),
-                            'BTC': balance['total'].get('BTC', 0),
-                            'ETH': balance['total'].get('ETH', 0)
-                        }
-                    }
-                
-                # Try real OKX connection
-                try:
-                    config = {
-                        'apiKey': api_key,
-                        'secret': secret_key,
-                        'passphrase': passphrase,
-                        'sandbox': is_testnet,
-                        'enableRateLimit': True,
-                        'hostname': 'www.okx.com',
-                        'timeout': 10000,
-                        'options': {
-                            'defaultType': 'spot',
-                        }
-                    }
-                    
-                    exchange_class = getattr(ccxt, 'okex')
-                    test_exchange = exchange_class(config)
-                    
-                    # Test by fetching balance
-                    balance = await test_exchange.fetch_balance()
-                    await test_exchange.close()
-                    
-                    return {
-                        'status': 'success',
-                        'message': 'Real OKX connection successful',
-                        'exchange': 'okx',
-                        'testnet': is_testnet,
-                        'balance_preview': {
-                            currency: data for currency, data in balance.get('total', {}).items() 
-                            if data > 0
-                        }
-                    }
-                    
-                except Exception as real_error:
-                    logger.warning(f"Real OKX connection failed: {real_error}, using mock")
-                    # Fallback to mock exchange
-                    config = {
-                        'apiKey': api_key,
-                        'secret': secret_key,
-                        'passphrase': passphrase,
-                        'sandbox': is_testnet,
-                    }
-                    mock_exchange = MockOKXExchange(config)
-                    balance = await mock_exchange.fetch_balance()
-                    return {
-                        'status': 'success',
-                        'message': f'Mock connection (Real API failed: {str(real_error)[:100]})',
-                        'exchange': 'okx',
-                        'testnet': is_testnet,
-                        'balance_preview': {
-                            'USDT': balance['total'].get('USDT', 0),
-                            'BTC': balance['total'].get('BTC', 0),
-                            'ETH': balance['total'].get('ETH', 0)
-                        }
-                    }
-            else:
-                raise Exception(f"Exchange {exchange} not supported yet")
-                
-        except Exception as e:
-            error_msg = str(e)
-            logger.error(f"Connection test failed: {error_msg}")
-            
-            # Provide user-friendly error messages
-            if "Missing required OKX credentials" in error_msg:
-                raise Exception("缺少必要的 OKX 凭据：API Key、Secret 和 Passphrase 都是必需的")
-            elif "Invalid API" in error_msg or "Authentication" in error_msg:
-                raise Exception("API认证失败，请检查API密钥、Secret和Passphrase是否正确")
-            elif "Permission" in error_msg:
-                raise Exception("API权限不足，请检查API密钥是否有读取权限")
-            elif "IP" in error_msg or "whitelist" in error_msg.lower():
-                raise Exception("IP访问被拒绝，请检查IP白名单设置")
-            elif "Network" in error_msg or "timeout" in error_msg.lower():
-                raise Exception("网络连接失败，请检查网络设置")
-            else:
-                raise Exception(f"连接测试失败: {error_msg}")
-
 class StrategyEngine:
     def __init__(self, exchange_manager: ExchangeManager):
         self.exchange_manager = exchange_manager
     
     def calculate_bollinger_bands(self, prices: np.array, period: int = 20, deviation: float = 2.0) -> Tuple[np.array, np.array, np.array]:
         """Calculate Bollinger Bands using numpy"""
+        # Calculate middle band (SMA)
         middle = np.convolve(prices, np.ones(period), 'valid') / period
+        
+        # Calculate standard deviation
         std_dev = np.array([np.std(prices[i:i+period]) for i in range(len(prices) - period + 1)])
+        
+        # Calculate upper and lower bands
         upper = middle + (std_dev * deviation)
         lower = middle - (std_dev * deviation)
+        
         return upper, middle, lower
     
     def calculate_ma(self, prices: np.array, period: int = 60) -> np.array:
@@ -381,6 +293,7 @@ class StrategyEngine:
                 logger.error(f"Exchange account not found for strategy {strategy.id}")
                 return None
             
+            # Get OHLCV data
             ohlcv_data = await self.exchange_manager.get_ohlcv(
                 exchange_account, 
                 strategy.symbol, 
@@ -392,11 +305,17 @@ class StrategyEngine:
                 logger.warning(f"Not enough data for strategy {strategy.id}")
                 return None
             
+            # Convert to pandas DataFrame
             df = pd.DataFrame(ohlcv_data, columns=['timestamp', 'open', 'high', 'low', 'close', 'volume'])
             df['timestamp'] = pd.to_datetime(df['timestamp'], unit='ms')
             
+            # Calculate indicators
+            prices = df['close'].values
+            
             if strategy.strategy_type == '5m_boll_ma60':
                 return await self._check_boll_ma_strategy(df, strategy)
+            
+            # Add more strategy types here
             
             return None
             
@@ -408,18 +327,23 @@ class StrategyEngine:
         """Check Bollinger Bands + MA strategy"""
         prices = df['close'].values
         
+        # Calculate indicators
         bb_upper, bb_middle, bb_lower = self.calculate_bollinger_bands(
             prices, strategy.bb_period, strategy.bb_deviation
         )
         ma = self.calculate_ma(prices, strategy.ma_period)
         
+        # Get latest values
         current_price = prices[-1]
         current_bb_upper = bb_upper[-1]
         current_bb_lower = bb_lower[-1]
         current_ma = ma[-1]
         
+        # Strategy logic: Buy when price touches lower Bollinger Band and is above MA
         if current_price <= current_bb_lower and current_price > current_ma:
             return "buy"
+        
+        # Sell when price touches upper Bollinger Band
         elif current_price >= current_bb_upper:
             return "sell"
         
@@ -436,6 +360,7 @@ class StrategyEngine:
                 logger.error(f"Exchange account not found for strategy {strategy.id}")
                 return None
             
+            # Place order
             order = await self.exchange_manager.place_order(
                 exchange_account,
                 strategy.symbol,
@@ -444,6 +369,7 @@ class StrategyEngine:
                 strategy.entry_amount
             )
             
+            # Create trade record
             trade = Trade(
                 user_id=strategy.user_id,
                 strategy_id=strategy.id,

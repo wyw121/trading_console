@@ -209,7 +209,7 @@ const loadStrategies = async () => {
 
 const loadExchangeAccounts = async () => {
           try {
-                    const response = await api.get('/exchange/accounts')
+                    const response = await api.get('/exchanges/')
                     exchangeAccounts.value = response.data
           } catch (error) {
                     ElMessage.error('加载交易所账户失败')

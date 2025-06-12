@@ -128,6 +128,7 @@ class DashboardStats(BaseModel):
     total_profit_loss: float
     today_trades: int
     today_profit_loss: float
+    account_balances: List[AccountBalance] = []
 
 # Market Data models
 class MarketDataResponse(BaseModel):
@@ -154,3 +155,10 @@ class ExchangeBalanceResponse(BaseModel):
     exchange: str
     balances: List[BalanceResponse]
     timestamp: datetime
+
+class ExchangeConnectionTest(BaseModel):
+    exchange: str
+    api_key: str
+    secret_key: str
+    passphrase: Optional[str] = None
+    is_testnet: bool = False

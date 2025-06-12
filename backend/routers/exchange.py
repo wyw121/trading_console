@@ -127,3 +127,19 @@ async def get_ticker(
         return ticker
     except Exception as e:
         raise HTTPException(status_code=400, detail=f"Error fetching ticker: {str(e)}")
+
+@router.post("/test_connection")
+async def test_connection(connection_test: schemas.ExchangeConnectionTest):
+    """Test exchange connection"""
+    try:
+        from trading_engine import exchange_manager
+        result = await exchange_manager.test_connection(
+            exchange=connection_test.exchange,
+            api_key=connection_test.api_key,
+            secret_key=connection_test.secret_key,
+            passphrase=connection_test.passphrase,
+            is_testnet=connection_test.is_testnet
+        )
+        return {"success": True, "message": "Connection successful", "data": result}
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=f"Connection failed: {str(e)}")

@@ -207,7 +207,7 @@ const formatNumber = (value) => {
 const loadExchangeAccounts = async () => {
           loading.value = true
           try {
-                    const response = await api.get('/exchange/accounts')
+                    const response = await api.get('/exchanges/')
                     exchangeAccounts.value = response.data
           } catch (error) {
                     ElMessage.error('加载交易所账户失败')
@@ -232,12 +232,11 @@ const resetForm = () => {
 const saveAccount = async () => {
           if (!accountFormRef.value) return
 
-          await accountFormRef.value.validate(async (valid) => {
-                    if (valid) {
+          await accountFormRef.value.validate(async (valid) => {                    if (valid) {
                               saving.value = true
 
                               try {
-                                        await api.post('/exchange/accounts', accountForm)
+                                        await api.post('/exchanges/', accountForm)
                                         ElMessage.success('交易所账户添加成功')
                                         showCreateDialog.value = false
                                         await loadExchangeAccounts()
@@ -253,7 +252,7 @@ const saveAccount = async () => {
 const testConnection = async (account) => {
           try {
                     ElMessage.info('测试连接中...')
-                    await api.get(`/exchange/accounts/${account.id}/ticker/BTC/USDT`)
+                    await api.get(`/exchanges/accounts/${account.id}/ticker/BTCUSDT`)
                     ElMessage.success('连接测试成功')
           } catch (error) {
                     ElMessage.error('连接测试失败: ' + (error.response?.data?.detail || error.message))
@@ -266,7 +265,7 @@ const viewBalance = async (account) => {
           balanceData.value = null
 
           try {
-                    const response = await api.get(`/exchange/accounts/${account.id}/balance`)
+                    const response = await api.get(`/exchanges/accounts/${account.id}/balance`)
                     balanceData.value = response.data
           } catch (error) {
                     ElMessage.error('获取余额失败: ' + (error.response?.data?.detail || error.message))
@@ -284,10 +283,9 @@ const deleteAccount = async (account) => {
                                         confirmButtonText: '确定',
                                         cancelButtonText: '取消',
                                         type: 'warning',
-                              }
-                    )
+                              }                    )
 
-                    await api.delete(`/exchange/accounts/${account.id}`)
+                    await api.delete(`/exchanges/accounts/${account.id}`)
                     ElMessage.success('账户删除成功')
                     await loadExchangeAccounts()
           } catch (error) {

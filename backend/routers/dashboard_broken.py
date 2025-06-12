@@ -57,8 +57,7 @@ async def get_dashboard_stats(
             balance = await exchange_manager.get_balance(account)
             
             for currency, data in balance.get('total', {}).items():
-                if data > 0:  # Only show non-zero balances
-                    account_balances.append(schemas.AccountBalance(
+                if data > 0:  # Only show non-zero balances                    account_balances.append(schemas.AccountBalance(
                         exchange=account.exchange_name,
                         currency=currency,
                         free=balance.get('free', {}).get(currency, 0),
