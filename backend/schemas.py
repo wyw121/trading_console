@@ -37,6 +37,14 @@ class ExchangeAccountBase(BaseModel):
 class ExchangeAccountCreate(ExchangeAccountBase):
     pass
 
+class ExchangeConnectionTest(BaseModel):
+    """真实API连接测试模型"""
+    exchange_name: str
+    api_key: str
+    api_secret: str
+    api_passphrase: Optional[str] = None
+    is_testnet: bool = False
+
 class ExchangeAccountResponse(BaseModel):
     id: int
     exchange_name: str
@@ -155,10 +163,3 @@ class ExchangeBalanceResponse(BaseModel):
     exchange: str
     balances: List[BalanceResponse]
     timestamp: datetime
-
-class ExchangeConnectionTest(BaseModel):
-    exchange: str
-    api_key: str
-    secret_key: str
-    passphrase: Optional[str] = None
-    is_testnet: bool = False

@@ -1,0 +1,349 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>真实API连接测试</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 20px;
+            background-color: #f5f5f5;
+        }
+        .container {
+            background: white;
+            padding: 30px;
+            border-radius: 10px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        }
+        .form-group {
+            margin-bottom: 20px;
+        }
+        label {
+            display: block;
+            margin-bottom: 5px;
+            font-weight: bold;
+        }
+        input, select {
+            width: 100%;
+            padding: 10px;
+            border: 1px solid #ddd;
+            border-radius: 5px;
+            box-sizing: border-box;
+        }
+        button {
+            background-color: #007bff;
+            color: white;
+            padding: 12px 24px;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+            font-size: 16px;
+        }
+        button:hover {
+            background-color: #0056b3;
+        }        button:disabled {
+            background-color: #ccc;
+            cursor: not-allowed;
+        }
+        .btn-secondary {
+            background-color: #6c757d;
+            color: white;
+            padding: 8px 16px;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 14px;
+            margin: 2px;
+        }
+        .btn-secondary:hover {
+            background-color: #545b62;
+        }
+        .result {
+            margin-top: 20px;
+            padding: 15px;
+            border-radius: 5px;
+            white-space: pre-wrap;
+        }
+        .success {
+            background-color: #d4edda;
+            color: #155724;
+            border: 1px solid #c3e6cb;
+        }
+        .error {
+            background-color: #f8d7da;
+            color: #721c24;
+            border: 1px solid #f5c6cb;
+        }
+        .info {
+            background-color: #d1ecf1;
+            color: #0c5460;
+            border: 1px solid #bee5eb;
+        }
+        .warning {
+            background-color: #fff3cd;
+            color: #856404;
+            border: 1px solid #ffeaa7;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🔗 真实API连接测试</h1>
+        <p><strong>注意：</strong>本系统只进行真实API连接，不使用任何模拟数据。连接失败时会直接显示真实的错误信息。</p>
+        
+        <form id="testForm">
+            <div class="form-group">
+                <label for="exchange">交易所:</label>
+                <select id="exchange" required>
+                    <option value="okx">OKX</option>
+                    <option value="binance">Binance</option>
+                </select>
+            </div>
+            
+            <div class="form-group">
+                <label for="apiKey">API Key:</label>
+                <input type="text" id="apiKey" placeholder="输入你的API Key" required>
+            </div>
+            
+            <div class="form-group">
+                <label for="apiSecret">API Secret:</label>
+                <input type="password" id="apiSecret" placeholder="输入你的API Secret" required>
+            </div>
+            
+            <div class="form-group" id="passphraseGroup">
+                <label for="passphrase">API Passphrase (OKX需要):</label>
+                <input type="password" id="passphrase" placeholder="输入你的API Passphrase">
+            </div>
+            
+            <div class="form-group">
+                <label>
+                    <input type="checkbox" id="testnet"> 使用测试网络
+                </label>
+            </div>
+            
+            <button type="submit" id="testBtn">测试连接</button>
+        </form>
+        
+        <div id="result" class="result" style="display: none;"></div>
+          <div id="quickTest" style="margin-top: 20px; display: none;">
+            <h3>🔧 快速功能测试</h3>
+            <div style="display: flex; gap: 10px; flex-wrap: wrap; margin-bottom: 20px;">
+                <button type="button" onclick="testMarketData()" class="btn-secondary">测试行情数据</button>
+                <button type="button" onclick="testAccountInfo()" class="btn-secondary">测试账户信息</button>
+                <button type="button" onclick="testOrderHistory()" class="btn-secondary">测试订单历史</button>
+                <button type="button" onclick="testSystemStatus()" class="btn-secondary">测试系统状态</button>
+            </div>
+        </div>
+
+        <div class="info" style="margin-top: 30px;">
+            <h3>📋 使用说明</h3>
+            <ul>
+                <li><strong>真实连接：</strong>系统只会尝试连接真实的交易所API</li>
+                <li><strong>无模拟数据：</strong>不会提供任何虚假或模拟的数据</li>
+                <li><strong>透明错误：</strong>连接失败时会显示真实的错误信息</li>
+                <li><strong>安全提示：</strong>建议使用只读权限的API密钥进行测试</li>
+                <li><strong>测试环境：</strong>建议先在测试网络进行所有功能验证</li>
+            </ul>
+            
+            <div style="margin-top: 20px; padding: 15px; background-color: #fff3cd; border-radius: 5px;">
+                <h4>🔑 OKX API密钥获取步骤:</h4>
+                <ol>
+                    <li>登录OKX官网 → 【交易】 → 【模拟交易】</li>
+                    <li>点击【个人资料】头像 → 【模拟交易API】</li>
+                    <li>创建API密钥，设置权限（建议先只开启读取权限）</li>
+                    <li>保存API Key、Secret Key、Passphrase</li>
+                    <li>在本页面填入密钥信息进行测试</li>
+                </ol>
+                <p><strong>⚠️ 重要：</strong>请使用模拟交易环境的API密钥进行测试，避免影响实盘资金。</p>
+            </div>
+            
+            <div style="margin-top: 20px; padding: 15px; background-color: #d1ecf1; border-radius: 5px;">
+                <h4>📚 相关资源:</h4>
+                <ul>
+                    <li><a href="https://www.okx.com/docs-v5/" target="_blank">OKX API官方文档</a></li>
+                    <li><a href="https://github.com/okxapi/python-okx" target="_blank">Python SDK GitHub</a></li>
+                    <li><a href="https://pypi.org/project/python-okx/" target="_blank">Python SDK PyPI</a></li>
+                    <li><a href="https://www.okx.com/help/how-can-i-do-spot-trading-with-the-jupyter-notebook" target="_blank">Jupyter交易教程</a></li>
+                </ul>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const form = document.getElementById('testForm');
+        const result = document.getElementById('result');
+        const testBtn = document.getElementById('testBtn');
+        const exchangeSelect = document.getElementById('exchange');
+        const passphraseGroup = document.getElementById('passphraseGroup');
+
+        // 根据选择的交易所显示/隐藏passphrase字段
+        exchangeSelect.addEventListener('change', function() {
+            if (this.value === 'okx') {
+                passphraseGroup.style.display = 'block';
+            } else {
+                passphraseGroup.style.display = 'none';
+            }
+        });
+
+        form.addEventListener('submit', async function(e) {
+            e.preventDefault();
+            
+            testBtn.disabled = true;
+            testBtn.textContent = '测试中...';
+            result.style.display = 'none';
+            
+            try {
+                // 首先登录获取token
+                const loginResponse = await fetch('http://localhost:8000/api/auth/login', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/x-www-form-urlencoded',
+                    },
+                    body: 'username=admin&password=admin123'
+                });
+                
+                if (!loginResponse.ok) {
+                    throw new Error('登录失败');
+                }
+                
+                const loginData = await loginResponse.json();
+                const token = loginData.access_token;
+                
+                // 准备测试数据
+                const testData = {
+                    exchange_name: document.getElementById('exchange').value,
+                    api_key: document.getElementById('apiKey').value,
+                    api_secret: document.getElementById('apiSecret').value,
+                    api_passphrase: document.getElementById('passphrase').value || null,
+                    is_testnet: document.getElementById('testnet').checked
+                };
+                
+                // 发送测试请求
+                const response = await fetch('http://localhost:8000/api/exchanges/test-connection', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Authorization': `Bearer ${token}`
+                    },
+                    body: JSON.stringify(testData)
+                });
+                
+                const data = await response.json();
+                
+                if (response.ok) {
+                    // 连接成功
+                    result.className = 'result success';
+                    result.innerHTML = `
+✅ 连接成功！
+
+交易所: ${data.data.exchange}
+网络: ${data.data.testnet ? '测试网' : '主网'}
+可用市场: ${data.data.available_markets}
+账户余额: $${data.data.total_balance_usd}
+支持币种: ${data.data.currencies ? data.data.currencies.join(', ') : 'N/A'}
+
+消息: ${data.message}
+                    `;
+                } else {
+                    // 连接失败
+                    result.className = 'result error';
+                    result.innerHTML = `
+❌ 连接失败
+
+错误信息: ${data.detail}
+
+这是真实的API错误，没有使用任何模拟数据。
+请检查:
+1. API密钥是否正确
+2. 网络连接是否正常
+3. 交易所API是否可访问
+4. 是否选择了正确的网络类型
+                    `;
+                }
+                
+            } catch (error) {
+                result.className = 'result error';
+                result.innerHTML = `
+❌ 请求失败
+
+错误: ${error.message}
+
+可能的原因:
+1. 后端服务未启动
+2. 网络连接问题
+3. 认证失败
+                `;
+            }
+              result.style.display = 'block';
+            testBtn.disabled = false;
+            testBtn.textContent = '测试连接';
+            
+            // 连接成功后显示快速测试按钮
+            if (response.ok) {
+                document.getElementById('quickTest').style.display = 'block';
+            }
+        });
+
+        // 快速测试功能
+        async function quickApiCall(endpoint, data = {}) {
+            try {
+                const loginResponse = await fetch('http://localhost:8000/api/auth/login', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+                    body: 'username=admin&password=admin123'
+                });
+                
+                if (!loginResponse.ok) throw new Error('登录失败');
+                
+                const loginData = await loginResponse.json();
+                const token = loginData.access_token;
+                
+                const response = await fetch(`http://localhost:8000/api/${endpoint}`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Authorization': `Bearer ${token}`
+                    },
+                    body: JSON.stringify({
+                        exchange_name: document.getElementById('exchange').value,
+                        is_testnet: document.getElementById('testnet').checked,
+                        ...data
+                    })
+                });
+                
+                const result = await response.json();
+                
+                document.getElementById('result').className = response.ok ? 'result success' : 'result error';
+                document.getElementById('result').innerHTML = response.ok 
+                    ? `✅ ${endpoint} 成功\n\n${JSON.stringify(result, null, 2)}`
+                    : `❌ ${endpoint} 失败\n\n${result.detail || result.message}`;
+                document.getElementById('result').style.display = 'block';
+                
+            } catch (error) {
+                document.getElementById('result').className = 'result error';
+                document.getElementById('result').innerHTML = `❌ ${endpoint} 请求失败\n\n${error.message}`;
+                document.getElementById('result').style.display = 'block';
+            }
+        }
+
+        async function testMarketData() {
+            await quickApiCall('exchanges/market-data', { symbol: 'BTC-USDT' });
+        }
+
+        async function testAccountInfo() {
+            await quickApiCall('exchanges/balance');
+        }
+
+        async function testOrderHistory() {
+            await quickApiCall('exchanges/orders');
+        }
+
+        async function testSystemStatus() {
+            await quickApiCall('exchanges/system-status');
+        }
+    </script>
+</body>
+</html>

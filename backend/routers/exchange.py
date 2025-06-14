@@ -5,6 +5,7 @@ from typing import List
 import schemas
 from database import get_db, User, ExchangeAccount
 from auth import verify_token
+from real_trading_engine import real_exchange_manager
 
 router = APIRouter(prefix="/exchanges", tags=["exchange"])
 security = HTTPBearer()
@@ -28,24 +29,60 @@ async def create_exchange_account(
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
-    """Create a new exchange account"""
-    # TODO: Encrypt API keys before storing
-    db_account = ExchangeAccount(
-        user_id=current_user.id,
-        exchange_name=account.exchange_name,
-        api_key=account.api_key,  # TODO: encrypt
-        api_secret=account.api_secret,  # TODO: encrypt
-        api_passphrase=account.api_passphrase,  # TODO: encrypt
-        is_testnet=account.is_testnet
-    )
-    db.add(db_account)
-    db.commit()
-    db.refresh(db_account)
-    
-    # Mask sensitive data in response
-    response = schemas.ExchangeAccountResponse.from_orm(db_account)
-    response.api_key = f"{response.api_key[:8]}..." if len(response.api_key) > 8 else "***"
-    return response
+    """Create a new exchange account with real API verification"""
+    try:
+        # 首先验证真实API连接
+        connection_result = await real_exchange_manager.test_connection(
+            exchange_name=account.exchange_name,
+            api_key=account.api_key,
+            api_secret=account.api_secret,
+            api_passphrase=account.api_passphrase,
+            is_testnet=account.is_testnet
+        )
+        
+        if not connection_result["success"]:
+            raise HTTPException(
+                status_code=400,
+                detail=f"API连接验证失败: {connection_result['message']}"
+            )
+        
+        # 连接验证成功，保存到数据库
+        # TODO: 在实际生产环境中需要加密API密钥
+        db_account = ExchangeAccount(
+            user_id=current_user.id,
+            exchange_name=account.exchange_name,
+            api_key=account.api_key,  # TODO: encrypt
+            api_secret=account.api_secret,  # TODO: encrypt
+            api_passphrase=account.api_passphrase,  # TODO: encrypt
+            is_testnet=account.is_testnet
+        )
+        db.add(db_account)
+        db.commit()
+        db.refresh(db_account)
+        
+        # 将连接添加到管理器
+        add_result = await real_exchange_manager.add_exchange_account(
+            user_id=current_user.id,
+            exchange_name=account.exchange_name,
+            api_key=account.api_key,
+            api_secret=account.api_secret,
+            api_passphrase=account.api_passphrase,
+            is_testnet=account.is_testnet
+        )
+        
+        # 在响应中隐藏敏感信息
+        response = schemas.ExchangeAccountResponse.from_orm(db_account)
+        response.api_key = f"{response.api_key[:8]}..." if len(response.api_key) > 8 else "***"
+        
+        return response
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(
+            status_code=500,
+            detail=f"创建交易所账户失败: {str(e)}"
+        )
 
 @router.get("/", response_model=List[schemas.ExchangeAccountResponse])
 async def get_exchange_accounts(
@@ -89,7 +126,7 @@ async def get_account_balance(
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
-    """Get account balance from exchange"""
+    """Get real account balance from exchange"""
     account = db.query(ExchangeAccount).filter(
         ExchangeAccount.id == account_id,
         ExchangeAccount.user_id == current_user.id
@@ -99,11 +136,29 @@ async def get_account_balance(
         raise HTTPException(status_code=404, detail="Exchange account not found")
     
     try:
-        from trading_engine import exchange_manager
-        balance = await exchange_manager.get_balance(account)
-        return balance
+        # 使用真实API获取余额
+        result = await real_exchange_manager.get_real_balance(
+            user_id=current_user.id,
+            exchange_name=account.exchange_name,
+            is_testnet=account.is_testnet
+        )
+        
+        if not result["success"]:
+            raise HTTPException(
+                status_code=400,
+                detail=f"获取余额失败: {result['message']}"
+            )
+        
+        return {
+            "success": True,
+            "message": result["message"],
+            "data": result["data"]
+        }
+        
+    except HTTPException:
+        raise
     except Exception as e:
-        raise HTTPException(status_code=400, detail=f"Error fetching balance: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"获取余额时发生错误: {str(e)}")
 
 @router.get("/accounts/{account_id}/ticker/{symbol}")
 async def get_ticker(
@@ -112,7 +167,7 @@ async def get_ticker(
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
-    """Get ticker data for a symbol"""
+    """Get real ticker data for a symbol"""
     account = db.query(ExchangeAccount).filter(
         ExchangeAccount.id == account_id,
         ExchangeAccount.user_id == current_user.id
@@ -122,11 +177,30 @@ async def get_ticker(
         raise HTTPException(status_code=404, detail="Exchange account not found")
     
     try:
-        from trading_engine import exchange_manager
-        ticker = await exchange_manager.get_ticker(account, symbol)
-        return ticker
+        # 使用真实API获取价格
+        result = await real_exchange_manager.get_real_ticker(
+            user_id=current_user.id,
+            exchange_name=account.exchange_name,
+            symbol=symbol,
+            is_testnet=account.is_testnet
+        )
+        
+        if not result["success"]:
+            raise HTTPException(
+                status_code=400,
+                detail=f"获取价格失败: {result['message']}"
+            )
+        
+        return {
+            "success": True,
+            "message": result["message"],
+            "data": result["data"]
+        }
+        
+    except HTTPException:
+        raise
     except Exception as e:
-        raise HTTPException(status_code=400, detail=f"Error fetching ticker: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"获取价格时发生错误: {str(e)}")
 
 @router.post("/test_connection")
 async def test_connection(connection_test: schemas.ExchangeConnectionTest):
@@ -143,3 +217,59 @@ async def test_connection(connection_test: schemas.ExchangeConnectionTest):
         return {"success": True, "message": "Connection successful", "data": result}
     except Exception as e:
         raise HTTPException(status_code=400, detail=f"Connection failed: {str(e)}")
+
+@router.get("/supported")
+async def get_supported_exchanges():
+    """Get list of supported exchanges"""
+    return [
+        {
+            "id": "okx",
+            "name": "OKX",
+            "description": "OKX exchange",
+            "supported_features": ["spot_trading", "futures_trading", "testnet"],
+            "logo": "okx_logo.png"
+        },
+        {
+            "id": "binance",
+            "name": "Binance",
+            "description": "Binance exchange",
+            "supported_features": ["spot_trading", "futures_trading", "testnet"],
+            "logo": "binance_logo.png"
+        }
+    ]
+
+@router.post("/test-connection")
+async def test_real_api_connection(
+    connection_data: schemas.ExchangeConnectionTest,
+    current_user: User = Depends(get_current_user)
+):
+    """测试真实API连接 - 不使用任何模拟数据"""
+    try:
+        result = await real_exchange_manager.test_connection(
+            exchange_name=connection_data.exchange_name,
+            api_key=connection_data.api_key,
+            api_secret=connection_data.api_secret,
+            api_passphrase=connection_data.api_passphrase,
+            is_testnet=connection_data.is_testnet
+        )
+        
+        if not result["success"]:
+            raise HTTPException(
+                status_code=400, 
+                detail=f"API连接失败: {result['message']}"
+            )
+        
+        return {
+            "success": True,
+            "message": result["message"],
+            "connection_type": "real",
+            "data": result["data"]
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(
+            status_code=500,
+            detail=f"连接测试失败: {str(e)}"
+        )
