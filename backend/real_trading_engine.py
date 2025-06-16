@@ -11,8 +11,10 @@ from datetime import datetime, timedelta
 import asyncio
 import logging
 import requests
+from mock_okx_api import mock_exchange_manager
 from database import SessionLocal, ExchangeAccount, Strategy, Trade, MarketData
 from sqlalchemy.orm import Session
+from proxy_config import proxy_config
 
 logger = logging.getLogger(__name__)
 
@@ -34,6 +36,12 @@ class RealExchangeManager:
         """创建真实交易所连接 - 不使用模拟"""
         try:
             logger.info(f"创建真实{exchange_name}交易所连接...")
+            
+            # 添加代理配置
+            proxy_settings = proxy_config.get_ccxt_proxy_config()
+            if proxy_settings:
+                logger.info("应用代理配置到交易所连接")
+                config.update(proxy_settings)
             
             if exchange_name.lower() in ['okx', 'okex']:
                 exchange_class = ccxt.okx
@@ -61,8 +69,7 @@ class RealExchangeManager:
                         config_copy['timeout'] = 30000  # 30秒超时
                         
                         exchange = exchange_class(config_copy)
-                        
-                        # 测试公共API连接
+                          # 测试公共API连接
                         logger.info(f"尝试连接OKX: {base_url}")
                         await exchange.load_markets()
                         logger.info(f"成功连接OKX: {base_url}")
@@ -70,8 +77,11 @@ class RealExchangeManager:
                         
                     except Exception as e:
                         logger.warning(f"连接{base_url}失败: {str(e)}")
-                        if exchange:
-                            await exchange.close()
+                        if 'exchange' in locals() and hasattr(exchange, 'close'):
+                            try:
+                                await exchange.close()
+                            except:
+                                pass
                         continue
                 
                 # 如果所有域名都失败，抛出错误
@@ -172,13 +182,11 @@ class RealExchangeManager:
             # 获取账户信息
             balance = await exchange.fetch_balance()
             markets = exchange.markets
-            
-            # 保存到数据库
+              # 保存连接到内存
             key = f"{user_id}_{exchange_name}_{is_testnet}"
             self.exchanges[key] = exchange
             
-            # 关闭连接
-            await exchange.close()
+            logger.info(f"已保存{exchange_name}交易所连接: {key}")
             
             return {
                 "success": True,
@@ -242,14 +250,18 @@ class RealExchangeManager:
             # 获取基本信息
             balance = await exchange.fetch_balance()
             markets = exchange.markets
-            
-            # 获取服务器时间验证连接
+              # 获取服务器时间验证连接
             if hasattr(exchange, 'fetch_time'):
                 server_time = await exchange.fetch_time()
             else:
                 server_time = None
             
-            await exchange.close()
+            # 安全地关闭连接
+            if hasattr(exchange, 'close'):
+                try:
+                    await exchange.close()
+                except:
+                    pass
             
             return {
                 "success": True,
@@ -268,8 +280,7 @@ class RealExchangeManager:
             error_msg = f"连接{exchange_name}失败: {str(e)}"
             logger.error(error_msg)
             return {
-                "success": False,
-                "message": error_msg,
+                "success": False,                "message": error_msg,
                 "data": None
             }
     
@@ -279,12 +290,40 @@ class RealExchangeManager:
         try:
             key = f"{user_id}_{exchange_name}_{is_testnet}"
             
+            # 如果连接不存在，尝试从数据库重新创建
             if key not in self.exchanges:
-                return {
-                    "success": False,
-                    "message": "交易所连接不存在，请先添加交易所账户",
-                    "data": None
+                logger.info(f"连接{key}不存在，尝试从数据库重新创建")
+                
+                # 从数据库获取账户信息
+                db = self.get_db_session()
+                account = db.query(ExchangeAccount).filter(
+                    ExchangeAccount.user_id == user_id,
+                    ExchangeAccount.exchange_name == exchange_name,
+                    ExchangeAccount.is_testnet == is_testnet
+                ).first()
+                
+                if not account:
+                    return {
+                        "success": False,
+                        "message": "找不到交易所账户，请先添加交易所账户",
+                        "data": None
+                    }
+                
+                # 重新创建连接
+                config = {
+                    'apiKey': account.api_key,
+                    'secret': account.api_secret,
+                    'sandbox': is_testnet,
+                    'enableRateLimit': True,
+                    'rateLimit': 1000,
                 }
+                
+                if account.api_passphrase:
+                    config['passphrase'] = account.api_passphrase
+                
+                exchange = await self.create_real_exchange(exchange_name, config)
+                self.exchanges[key] = exchange
+                logger.info(f"重新创建连接成功: {key}")
             
             exchange = self.exchanges[key]
             balance = await exchange.fetch_balance()
@@ -296,6 +335,8 @@ class RealExchangeManager:
                     "exchange": exchange_name,
                     "testnet": is_testnet,
                     "balances": balance.get('total', {}),
+                    "free": balance.get('free', {}),
+                    "used": balance.get('used', {}),
                     "total_usd": self._calculate_total_balance_usd(balance)
                 }
             }
@@ -346,16 +387,16 @@ class RealExchangeManager:
             return {
                 "success": False,
                 "message": error_msg,
-                "data": None
-            }
+                "data": None            }
     
     async def close_all_connections(self):
         """关闭所有交易所连接"""
         try:
             for key, exchange in self.exchanges.items():
                 try:
-                    await exchange.close()
-                    logger.info(f"关闭连接: {key}")
+                    if hasattr(exchange, 'close'):
+                        await exchange.close()
+                        logger.info(f"关闭连接: {key}")
                 except Exception as e:
                     logger.error(f"关闭连接失败 {key}: {e}")
             
