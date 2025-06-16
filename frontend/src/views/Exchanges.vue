@@ -67,10 +67,20 @@
                                                   </template>
                                         </el-table-column>
                               </el-table>
-                    </el-card>
-
-                    <!-- 添加账户对话框 -->
+                    </el-card>                    <!-- 添加账户对话框 -->
                     <el-dialog title="添加交易所账户" v-model="showCreateDialog" width="500px" @close="resetForm">
+                              <el-alert title="测试环境" type="info" :closable="false" style="margin-bottom: 15px">
+                                        <p>当前已自动填充OKX测试API密钥，您可以直接点击保存进行测试。</p>
+                                        <div style="display: flex; gap: 10px; margin-top: 10px;">
+                                                  <el-button size="small" type="success" @click="fillTestCredentials">
+                                                            快速填充测试密钥
+                                                  </el-button>
+                                                  <el-button size="small" @click="clearForm">
+                                                            清空表单
+                                                  </el-button>
+                                        </div>
+                              </el-alert>
+                              
                               <el-alert title="安全提示" type="warning" :closable="false" style="margin-bottom: 20px">
                                         <p>请确保您的API密钥具有交易权限，但建议禁用提币权限以保证资金安全。</p>
                                         <p>API密钥将被加密存储在数据库中。</p>
@@ -170,11 +180,11 @@ const balanceData = ref(null)
 const accountFormRef = ref()
 
 const accountForm = reactive({
-          exchange_name: '',
-          api_key: '',
-          api_secret: '',
-          api_passphrase: '',
-          is_testnet: true
+          exchange_name: 'okex',  // 默认选择OKX
+          api_key: 'edb07d2e-8fb5-46e8-84b8-5e1795c71ac0',  // 默认测试API Key
+          api_secret: 'CD6A497EEB00AA2DC60B2B0974DD2485',  // 默认测试Secret
+          api_passphrase: 'vf5Y3UeUFiz6xfF!',  // 默认测试Passphrase
+          is_testnet: true  // 默认使用测试网
 })
 
 const accountRules = {
@@ -218,6 +228,30 @@ const loadExchangeAccounts = async () => {
 
 const resetForm = () => {
           Object.assign(accountForm, {
+                    exchange_name: 'okex',  // 默认选择OKX
+                    api_key: 'edb07d2e-8fb5-46e8-84b8-5e1795c71ac0',  // 默认测试API Key
+                    api_secret: 'CD6A497EEB00AA2DC60B2B0974DD2485',  // 默认测试Secret
+                    api_passphrase: 'vf5Y3UeUFiz6xfF!',  // 默认测试Passphrase
+                    is_testnet: true  // 默认使用测试网
+          })
+          if (accountFormRef.value) {
+                    accountFormRef.value.clearValidate()
+          }
+}
+
+const fillTestCredentials = () => {
+          Object.assign(accountForm, {
+                    exchange_name: 'okex',
+                    api_key: 'edb07d2e-8fb5-46e8-84b8-5e1795c71ac0',
+                    api_secret: 'CD6A497EEB00AA2DC60B2B0974DD2485',
+                    api_passphrase: 'vf5Y3UeUFiz6xfF!',
+                    is_testnet: true
+          })
+          ElMessage.success('已填充OKX测试API密钥')
+}
+
+const clearForm = () => {
+          Object.assign(accountForm, {
                     exchange_name: '',
                     api_key: '',
                     api_secret: '',
@@ -227,6 +261,7 @@ const resetForm = () => {
           if (accountFormRef.value) {
                     accountFormRef.value.clearValidate()
           }
+          ElMessage.info('表单已清空')
 }
 
 const saveAccount = async () => {

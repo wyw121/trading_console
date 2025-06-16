@@ -22,7 +22,6 @@ services:
     ports:
       - "6379:6379"
     restart: unless-stopped
-
   # Backend API
   backend:
     build:
@@ -34,6 +33,11 @@ services:
       - REDIS_URL=redis://redis:6379
       - SECRET_KEY=your-very-secret-key-change-in-production
       - ENVIRONMENT=development
+      # 代理配置（用于访问海外交易所API）
+      - USE_PROXY=${USE_PROXY:-false}
+      - PROXY_HOST=${PROXY_HOST:-host.docker.internal}
+      - PROXY_PORT=${PROXY_PORT:-1080}
+      - PROXY_TYPE=${PROXY_TYPE:-socks5}
     ports:
       - "8000:8000"
     depends_on:
@@ -42,6 +46,9 @@ services:
     volumes:
       - ./backend:/app
     restart: unless-stopped
+    # 允许容器访问宿主机网络（用于代理）
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     command: uvicorn main:app --host 0.0.0.0 --port 8000 --reload
 
   # Frontend
