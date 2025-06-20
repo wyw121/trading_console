@@ -90,8 +90,7 @@ async def create_exchange_account(
 async def get_exchange_accounts(
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db)
-):
-    """Get user's exchange accounts"""
+):    """Get user's exchange accounts"""
     accounts = db.query(ExchangeAccount).filter(ExchangeAccount.user_id == current_user.id).all()
     
     # 尝试恢复交易所连接（如果不存在的话）
@@ -144,8 +143,7 @@ async def get_account_balance(
     if not account:
         raise HTTPException(status_code=404, detail="Exchange account not found")
     
-    try:
-        # 使用真实API获取余额
+    try:        # 使用真实API获取余额
         result = real_exchange_manager.get_real_balance(
             user_id=current_user.id,
             exchange_name=account.exchange_name,
@@ -185,8 +183,7 @@ async def get_ticker(
     if not account:
         raise HTTPException(status_code=404, detail="Exchange account not found")
     
-    try:
-        # 使用真实API获取价格
+    try:        # 使用真实API获取价格
         result = real_exchange_manager.get_real_ticker(
             user_id=current_user.id,
             exchange_name=account.exchange_name,

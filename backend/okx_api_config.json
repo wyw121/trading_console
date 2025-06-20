@@ -1,0 +1,31 @@
+{
+  "okx_api": {
+    "api_key": "7760f27c-62a1-4af1-aef6-eb25c998b83f",
+    "secret_key": "6A44039F47D5CA690BD14CF7019BAAAA",
+    "passphrase": "vf5Y3UeUFiz6xfF!",
+    "sandbox": false,
+    "exchange_name": "okx",
+    "whitelisted_ip": "23.145.24.14",
+    "permissions": [
+      "读取",
+      "交易"
+    ],
+    "description": "测试用 OKX API - 已配置白名单和交易权限"
+  },
+  "created_at": "2025-06-20T02:55:51.243532",
+  "status": "active",
+  "test_results": {
+    "proxy_connection": "✅ PASS",
+    "public_api": "✅ PASS",
+    "private_api": "✅ PASS",
+    "trading_api": "✅ PASS",
+    "account_info": "✅ PASS"
+  },
+  "notes": [
+    "所有 API 测试通过",
+    "代理连接正常 (IP: 23.145.24.14)",
+    "账户等级: 2",
+    "支持 776 个交易对",
+    "已配置 IP 白名单"
+  ]
+}

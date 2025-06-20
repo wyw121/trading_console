@@ -2,6 +2,7 @@
 真实API连接交易引擎
 只进行真实API连接，不包含任何模拟数据
 连接失败时直接返回错误信息
+使用简化的OKX修复
 """
 import ccxt
 import pandas as pd
@@ -15,6 +16,7 @@ from mock_okx_api import mock_exchange_manager
 from database import SessionLocal, ExchangeAccount, Strategy, Trade, MarketData
 from sqlalchemy.orm import Session
 from proxy_config import proxy_config
+from simple_ccxt_fix import create_okx_exchange, test_okx_connection, setup_okx_proxy
 
 logger = logging.getLogger(__name__)
 
@@ -25,86 +27,54 @@ class RealExchangeManager:
         self.exchanges: Dict[str, ccxt.Exchange] = {}
         self.db_session = None
         logger.info("初始化真实交易所管理器")
-    
-    def get_db_session(self) -> Session:
+      def get_db_session(self) -> Session:
         """获取数据库会话"""
         if not self.db_session:
             self.db_session = SessionLocal()
         return self.db_session
     
     async def create_real_exchange(self, exchange_name: str, config: Dict) -> ccxt.Exchange:
-        """创建真实交易所连接 - 不使用模拟"""
+        """创建真实交易所连接 - 使用简化的OKX修复"""
         try:
             logger.info(f"创建真实{exchange_name}交易所连接...")
             
-            # 添加代理配置
-            proxy_settings = proxy_config.get_ccxt_proxy_config()
-            if proxy_settings:
-                logger.info("应用代理配置到交易所连接")
-                config.update(proxy_settings)
-            
             if exchange_name.lower() in ['okx', 'okex']:
-                exchange_class = ccxt.okx
+                # 使用简化的OKX修复
                 required_keys = ['apiKey', 'secret', 'passphrase']
+                missing_keys = [key for key in required_keys if not config.get(key)]
+                if missing_keys:
+                    raise ValueError(f"OKX缺少必需的API密钥: {missing_keys}")
                 
-                # 为OKX添加多个备用域名
-                okx_urls = [
-                    'https://www.okx.com',
-                    'https://aws.okx.com', 
-                    'https://okx.com',
-                    'https://api.okx.com'
-                ]
+                # 创建带代理的OKX实例
+                exchange = create_okx_exchange(config)
                 
-                # 尝试不同的域名
-                for base_url in okx_urls:
-                    try:
-                        config_copy = config.copy()
-                        config_copy['urls'] = {
-                            'api': {
-                                'rest': base_url,
-                                'public': f"{base_url}/api/v5",
-                                'private': f"{base_url}/api/v5"
-                            }
-                        }
-                        config_copy['timeout'] = 30000  # 30秒超时
-                        
-                        exchange = exchange_class(config_copy)
-                          # 测试公共API连接
-                        logger.info(f"尝试连接OKX: {base_url}")
-                        await exchange.load_markets()
-                        logger.info(f"成功连接OKX: {base_url}")
-                        return exchange
-                        
-                    except Exception as e:
-                        logger.warning(f"连接{base_url}失败: {str(e)}")
-                        if 'exchange' in locals() and hasattr(exchange, 'close'):
-                            try:
-                                await exchange.close()
-                            except:
-                                pass
-                        continue
+                # 测试连接
+                connection_result = test_okx_connection(exchange)
+                if not connection_result['success']:
+                    raise Exception(f"OKX连接测试失败: {connection_result['message']}")
                 
-                # 如果所有域名都失败，抛出错误
-                raise Exception("无法连接到任何OKX域名，请检查网络连接")
+                logger.info("✅ OKX连接成功")
+                return exchange
                 
             elif exchange_name.lower() == 'binance':
-                exchange_class = ccxt.binance
                 required_keys = ['apiKey', 'secret']
+                missing_keys = [key for key in required_keys if not config.get(key)]
+                if missing_keys:
+                    raise ValueError(f"Binance缺少必需的API密钥: {missing_keys}")
+                
+                # 添加代理配置
+                proxy_settings = proxy_config.get_ccxt_proxy_config()
+                if proxy_settings:
+                    config.update(proxy_settings)
+                
+                exchange = ccxt.binance(config)
+                await self._test_exchange_connection(exchange)
+                logger.info(f"成功连接{exchange_name}")
+                return exchange
+                
             else:
                 raise ValueError(f"不支持的交易所: {exchange_name}")
-              # 验证必需的API密钥
-            missing_keys = [key for key in required_keys if not config.get(key)]
-            if missing_keys:
-                raise ValueError(f"缺少必需的API密钥: {missing_keys}")
-            
-            # 创建交易所实例
-            if exchange_name.lower() not in ['okx', 'okex']:
-                exchange = exchange_class(config)
-                await self._test_exchange_connection(exchange)
-            
-            logger.info(f"成功创建{exchange_name}真实连接")
-            return exchange
-            
+                
         except Exception as e:
             error_msg = f"创建{exchange_name}真实连接失败: {str(e)}"
             logger.error(error_msg)
