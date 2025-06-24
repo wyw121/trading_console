@@ -1,0 +1,184 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>注册功能测试</title>
+    <style>
+        body { font-family: Arial, sans-serif; padding: 20px; background: #f5f5f5; }
+        .container { max-width: 500px; margin: 0 auto; background: white; padding: 30px; border-radius: 8px; }
+        input, button { width: 100%; padding: 12px; margin: 10px 0; border: 1px solid #ddd; border-radius: 4px; box-sizing: border-box; }
+        button { background: #007bff; color: white; border: none; cursor: pointer; }
+        button:hover { background: #0056b3; }
+        .result { padding: 15px; margin: 15px 0; border-radius: 4px; }
+        .success { background: #d4edda; color: #155724; border: 1px solid #c3e6cb; }
+        .error { background: #f8d7da; color: #721c24; border: 1px solid #f5c6cb; }
+        h2 { color: #333; text-align: center; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h2>注册功能测试</h2>
+        <input type="text" id="username" placeholder="用户名" required>
+        <input type="email" id="email" placeholder="邮箱地址" required>
+        <input type="password" id="password" placeholder="密码" required>
+        <input type="password" id="confirmPassword" placeholder="确认密码" required>
+        <button onclick="testRegister()">测试注册</button>
+        <div id="result"></div>
+        
+        <hr style="margin: 30px 0;">
+        
+        <h3>快速登录测试</h3>
+        <input type="text" id="loginUsername" placeholder="用户名" value="111">
+        <input type="password" id="loginPassword" placeholder="密码" value="123456">
+        <button onclick="testLogin()">测试登录</button>
+        <div id="loginResult"></div>
+    </div>
+
+    <script>
+        // 生成随机测试数据
+        function generateTestData() {
+            const timestamp = Date.now();
+            document.getElementById('username').value = `test_${timestamp}`;
+            document.getElementById('email').value = `test_${timestamp}@example.com`;
+            document.getElementById('password').value = 'test123456';
+            document.getElementById('confirmPassword').value = 'test123456';
+        }
+        
+        async function testRegister() {
+            const username = document.getElementById('username').value;
+            const email = document.getElementById('email').value;
+            const password = document.getElementById('password').value;
+            const confirmPassword = document.getElementById('confirmPassword').value;
+            const resultDiv = document.getElementById('result');
+            
+            // 基本验证
+            if (!username || !email || !password || !confirmPassword) {
+                resultDiv.innerHTML = '<div class="result error">❌ 所有字段都必须填写</div>';
+                return;
+            }
+            
+            if (password !== confirmPassword) {
+                resultDiv.innerHTML = '<div class="result error">❌ 两次输入的密码不一致</div>';
+                return;
+            }
+            
+            if (password.length < 6) {
+                resultDiv.innerHTML = '<div class="result error">❌ 密码长度至少6位</div>';
+                return;
+            }
+            
+            try {
+                console.log('开始注册测试...', { username, email });
+                
+                const response = await fetch('/api/auth/register', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({ username, email, password })
+                });
+                
+                console.log('注册响应状态:', response.status);
+                
+                if (response.ok) {
+                    const data = await response.json();
+                    resultDiv.innerHTML = `
+                        <div class="result success">
+                            ✅ 注册成功！<br>
+                            用户ID: ${data.id}<br>
+                            用户名: ${data.username}<br>
+                            邮箱: ${data.email}<br>
+                            创建时间: ${new Date(data.created_at).toLocaleString()}
+                        </div>
+                    `;
+                    console.log('注册成功:', data);
+                } else {
+                    const error = await response.text();
+                    resultDiv.innerHTML = `
+                        <div class="result error">
+                            ❌ 注册失败 (${response.status})<br>
+                            ${error}
+                        </div>
+                    `;
+                    console.error('注册失败:', error);
+                }
+            } catch (error) {
+                console.error('注册错误:', error);
+                resultDiv.innerHTML = `
+                    <div class="result error">
+                        ❌ 请求失败: ${error.message}
+                    </div>
+                `;
+            }
+        }
+        
+        async function testLogin() {
+            const username = document.getElementById('loginUsername').value;
+            const password = document.getElementById('loginPassword').value;
+            const resultDiv = document.getElementById('loginResult');
+            
+            try {
+                console.log('开始登录测试...', { username });
+                
+                const formData = new FormData();
+                formData.append('username', username);
+                formData.append('password', password);
+                
+                const response = await fetch('/api/auth/login', {
+                    method: 'POST',
+                    body: formData
+                });
+                
+                console.log('登录响应状态:', response.status);
+                
+                if (response.ok) {
+                    const data = await response.json();
+                    const token = data.access_token;
+                    
+                    // 保存token并测试获取用户信息
+                    localStorage.setItem('token', token);
+                    
+                    const userResponse = await fetch('/api/auth/me', {
+                        headers: {
+                            'Authorization': `Bearer ${token}`
+                        }
+                    });
+                    
+                    if (userResponse.ok) {
+                        const userData = await userResponse.json();
+                        resultDiv.innerHTML = `
+                            <div class="result success">
+                                ✅ 登录成功！<br>
+                                用户: ${userData.username}<br>
+                                邮箱: ${userData.email}<br>
+                                Token: ${token.substring(0, 30)}...
+                            </div>
+                        `;
+                    } else {
+                        throw new Error('获取用户信息失败');
+                    }
+                } else {
+                    const error = await response.text();
+                    resultDiv.innerHTML = `
+                        <div class="result error">
+                            ❌ 登录失败 (${response.status})<br>
+                            ${error}
+                        </div>
+                    `;
+                }
+            } catch (error) {
+                console.error('登录错误:', error);
+                resultDiv.innerHTML = `
+                    <div class="result error">
+                        ❌ 登录失败: ${error.message}
+                    </div>
+                `;
+            }
+        }
+        
+        // 页面加载时自动生成测试数据
+        window.onload = function() {
+            generateTestData();
+        };
+    </script>
+</body>
+</html>

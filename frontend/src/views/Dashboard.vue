@@ -260,10 +260,32 @@ const getTradeStatusText = (status) => {
 
 const loadDashboardData = async () => {
           try {
+                    console.log('开始加载控制台数据...')
                     const response = await api.get('/dashboard/stats')
                     dashboardStats.value = response.data
+                    console.log('Dashboard数据加载成功:', response.data)
+                    ElMessage.success('控制台数据加载成功')
           } catch (error) {
-                    ElMessage.error('加载控制台数据失败')
+                    console.error('加载控制台数据失败:', error)
+                    console.error('错误详情:', error.response?.data)
+                    
+                    // Check if it's a timeout error
+                    if (error.code === 'ECONNABORTED' || error.message.includes('timeout')) {
+                              ElMessage.warning('加载超时，但不影响基本功能')
+                              // Set default stats on timeout
+                              dashboardStats.value = {
+                                        total_strategies: 0,
+                                        active_strategies: 0,
+                                        total_trades: 0,
+                                        total_profit_loss: 0.0,
+                                        today_trades: 0,
+                                        today_profit_loss: 0.0,
+                                        account_balances: []
+                              }
+                    } else {
+                              const errorMessage = error.response?.data?.detail || error.message || '加载控制台数据失败'
+                              ElMessage.error(`加载控制台数据失败: ${errorMessage}`)
+                    }
           }
 }
 
@@ -271,17 +293,24 @@ const loadRecentTrades = async () => {
           try {
                     const response = await api.get('/trades')
                     recentTrades.value = response.data.slice(0, 5) // Show only 5 recent trades
+                    console.log('交易记录加载成功:', response.data)
           } catch (error) {
                     console.error('加载交易记录失败:', error)
+                    console.error('错误详情:', error.response?.data)
+                    // 不显示错误消息，因为交易记录为空是正常的
           }
 }
 
 const refreshBalances = async () => {
           balanceLoading.value = true
           try {
-                    await loadDashboardData()
+                    console.log('开始刷新余额...')
+                    const response = await api.get('/dashboard/refresh-balances')
+                    dashboardStats.value = response.data
+                    console.log('余额刷新成功:', response.data)
                     ElMessage.success('余额刷新成功')
           } catch (error) {
+                    console.error('刷新余额失败:', error)
                     ElMessage.error('刷新失败')
           } finally {
                     balanceLoading.value = false

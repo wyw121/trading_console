@@ -1,0 +1,312 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Trading Console API 修复测试</title>
+    <style>
+        body { font-family: Arial, sans-serif; max-width: 1000px; margin: 0 auto; padding: 20px; }
+        .test-section { background: #f5f5f5; padding: 15px; margin: 10px 0; border-radius: 5px; }
+        .success { color: green; font-weight: bold; }
+        .error { color: red; font-weight: bold; }
+        .info { color: blue; }
+        .warning { color: orange; }
+        button { background: #007bff; color: white; border: none; padding: 8px 16px; border-radius: 4px; cursor: pointer; margin: 5px; }
+        button:hover { background: #0056b3; }
+        textarea { width: 100%; height: 200px; font-family: monospace; padding: 10px; }
+        .status-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+        .api-result { background: white; padding: 10px; border-left: 4px solid #ddd; margin: 5px 0; }
+        .api-result.success { border-left-color: green; }
+        .api-result.error { border-left-color: red; }
+        pre { background: #f8f9fa; padding: 10px; border-radius: 4px; overflow-x: auto; }
+    </style>
+</head>
+<body>
+    <h1>🔧 Trading Console API 修复测试工具</h1>
+    
+    <div class="test-section">
+        <h2>🔑 认证测试</h2>
+        <button onclick="testFullAuthFlow()">完整认证测试</button>
+        <button onclick="getNewToken()">获取新Token</button>
+        <button onclick="testStoredToken()">测试本地Token</button>
+        <div id="auth-status"></div>
+    </div>
+
+    <div class="test-section">
+        <h2>📊 API端点测试</h2>
+        <div class="status-grid">
+            <button onclick="testAPI('/api/dashboard/stats', 'Dashboard统计')">Dashboard统计</button>
+            <button onclick="testAPI('/api/strategies', '策略列表')">策略列表</button>
+            <button onclick="testAPI('/api/trades', '交易记录')">交易记录</button>
+            <button onclick="testAPI('/api/exchanges/', '交易所账户')">交易所账户</button>
+        </div>
+        <div id="api-results"></div>
+    </div>
+
+    <div class="test-section">
+        <h2>📝 详细日志</h2>
+        <button onclick="clearLog()">清空日志</button>
+        <button onclick="saveResults()">保存结果</button>
+        <textarea id="log-area" readonly></textarea>
+    </div>    <script>
+        const API_BASE = '/api';
+        // 测试直接连接后端的base URL（用于调试）
+        const DIRECT_API_BASE = 'http://localhost:8000/api';
+        let currentToken = localStorage.getItem('token');
+        let useDirectAPI = false; // 切换是否使用直接API连接
+        
+        function log(message, type = 'info') {
+            const timestamp = new Date().toLocaleTimeString();
+            const logArea = document.getElementById('log-area');
+            const logMessage = `[${timestamp}] ${type.toUpperCase()}: ${message}\n`;
+            logArea.value += logMessage;
+            logArea.scrollTop = logArea.scrollHeight;
+            console.log(logMessage);
+        }
+
+        function updateAuthStatus(message, isSuccess = true) {
+            const authStatus = document.getElementById('auth-status');
+            authStatus.innerHTML = `<div class="${isSuccess ? 'success' : 'error'}">${message}</div>`;
+        }
+
+        function clearLog() {
+            document.getElementById('log-area').value = '';
+        }        async function getNewToken() {
+            log('开始获取新Token...');
+            const baseURL = useDirectAPI ? DIRECT_API_BASE : API_BASE;
+            
+            try {
+                const formData = new FormData();
+                formData.append('username', 'admin');
+                formData.append('password', 'admin123');
+
+                const response = await fetch(`${baseURL}/auth/login`, {
+                    method: 'POST',
+                    body: formData
+                });
+
+                if (response.ok) {
+                    const data = await response.json();
+                    currentToken = data.access_token;
+                    localStorage.setItem('token', currentToken);
+                    log(`✅ 新Token获取成功: ${currentToken.substring(0, 50)}...`);
+                    updateAuthStatus(`✅ 新Token获取成功 (${new Date().toLocaleTimeString()})`);
+                    return currentToken;
+                } else {
+                    const errorText = await response.text();
+                    log(`❌ 获取Token失败: ${response.status} - ${errorText}`, 'error');
+                    updateAuthStatus(`❌ 获取Token失败: ${response.status}`, false);
+                    
+                    // 如果代理失败，尝试直接连接
+                    if (!useDirectAPI && response.status === 404) {
+                        log('🔄 代理失败，尝试直接连接后端...', 'warning');
+                        useDirectAPI = true;
+                        return await getNewToken();
+                    }
+                    
+                    return null;
+                }
+            } catch (error) {
+                log(`❌ Token获取异常: ${error.message}`, 'error');
+                updateAuthStatus(`❌ Token获取异常: ${error.message}`, false);
+                
+                // 如果代理失败，尝试直接连接
+                if (!useDirectAPI) {
+                    log('🔄 代理连接失败，尝试直接连接后端...', 'warning');
+                    useDirectAPI = true;
+                    return await getNewToken();
+                }
+                
+                return null;
+            }
+        }
+
+        async function testStoredToken() {
+            if (!currentToken) {
+                log('⚠️ 没有存储的Token，尝试获取新的', 'warning');
+                return await getNewToken();
+            }
+
+            log('测试存储的Token...');
+            try {
+                const response = await fetch(`${API_BASE}/auth/me`, {
+                    headers: { 'Authorization': `Bearer ${currentToken}` }
+                });
+
+                if (response.ok) {
+                    const userData = await response.json();
+                    log(`✅ 存储的Token有效，用户: ${userData.username}`);
+                    updateAuthStatus(`✅ Token有效 - 用户: ${userData.username}`);
+                    return currentToken;
+                } else {
+                    log(`❌ 存储的Token无效: ${response.status}`, 'error');
+                    updateAuthStatus('❌ 存储的Token无效，需要重新登录', false);
+                    return await getNewToken();
+                }
+            } catch (error) {
+                log(`❌ Token验证异常: ${error.message}`, 'error');
+                return await getNewToken();
+            }
+        }
+
+        async function testFullAuthFlow() {
+            log('=== 开始完整认证流程测试 ===');
+            
+            // 清除现有Token
+            localStorage.removeItem('token');
+            currentToken = null;
+            
+            // 获取新Token
+            const token = await getNewToken();
+            if (!token) {
+                log('❌ 认证流程失败，无法获取Token', 'error');
+                return false;
+            }
+
+            // 测试用户信息
+            try {
+                const response = await fetch(`${API_BASE}/auth/me`, {
+                    headers: { 'Authorization': `Bearer ${token}` }
+                });
+
+                if (response.ok) {
+                    const userData = await response.json();
+                    log(`✅ 用户信息验证成功: ${JSON.stringify(userData)}`);
+                    
+                    // 测试所有主要API
+                    await testAllAPIs();
+                    return true;
+                } else {
+                    log(`❌ 用户信息验证失败: ${response.status}`, 'error');
+                    return false;
+                }
+            } catch (error) {
+                log(`❌ 用户信息验证异常: ${error.message}`, 'error');
+                return false;
+            }
+        }
+
+        async function testAPI(endpoint, name) {
+            if (!currentToken) {
+                log('⚠️ 没有Token，先获取Token', 'warning');
+                await getNewToken();
+            }
+
+            log(`测试 ${name} (${endpoint})...`);
+            
+            try {
+                const response = await fetch(`${API_BASE}${endpoint}`, {
+                    headers: { 'Authorization': `Bearer ${currentToken}` }
+                });
+
+                const resultsDiv = document.getElementById('api-results');
+                
+                if (response.ok) {
+                    const data = await response.json();
+                    let dataInfo = '';
+                    
+                    if (Array.isArray(data)) {
+                        dataInfo = `数组，${data.length}个项目`;
+                        if (data.length > 0) {
+                            log(`✅ ${name}: 成功获取${data.length}个项目`);
+                            if (endpoint === '/api/strategies') {
+                                log(`策略详情: ${data.map(s => s.name).join(', ')}`);
+                            }
+                        } else {
+                            log(`✅ ${name}: 成功但数据为空`);
+                        }
+                    } else {
+                        dataInfo = '对象数据';
+                        log(`✅ ${name}: 成功获取对象数据`);
+                        if (endpoint === '/api/dashboard/stats') {
+                            log(`Dashboard数据: 策略${data.total_strategies}个, 余额${data.account_balances?.length || 0}个`);
+                        }
+                    }
+
+                    resultsDiv.innerHTML += `
+                        <div class="api-result success">
+                            <strong>✅ ${name}</strong><br>
+                            状态: 200 OK<br>
+                            数据: ${dataInfo}<br>
+                            <pre>${JSON.stringify(data, null, 2).substring(0, 500)}${JSON.stringify(data, null, 2).length > 500 ? '...' : ''}</pre>
+                        </div>
+                    `;
+                } else {
+                    log(`❌ ${name}: 失败 ${response.status}`, 'error');
+                    const errorText = await response.text();
+                    
+                    resultsDiv.innerHTML += `
+                        <div class="api-result error">
+                            <strong>❌ ${name}</strong><br>
+                            状态: ${response.status}<br>
+                            错误: ${errorText}
+                        </div>
+                    `;
+
+                    // 如果是401错误，尝试重新获取Token
+                    if (response.status === 401) {
+                        log('🔄 检测到401错误，尝试重新获取Token', 'warning');
+                        await getNewToken();
+                    }
+                }
+            } catch (error) {
+                log(`❌ ${name} 请求异常: ${error.message}`, 'error');
+                
+                const resultsDiv = document.getElementById('api-results');
+                resultsDiv.innerHTML += `
+                    <div class="api-result error">
+                        <strong>❌ ${name}</strong><br>
+                        异常: ${error.message}
+                    </div>
+                `;
+            }
+        }
+
+        async function testAllAPIs() {
+            log('=== 开始测试所有API端点 ===');
+            document.getElementById('api-results').innerHTML = '';
+            
+            const apis = [
+                ['/api/dashboard/stats', 'Dashboard统计'],
+                ['/api/strategies', '策略列表'],
+                ['/api/trades', '交易记录'],
+                ['/api/exchanges/', '交易所账户']
+            ];
+
+            for (const [endpoint, name] of apis) {
+                await testAPI(endpoint, name);
+                // 短暂延迟避免请求过快
+                await new Promise(resolve => setTimeout(resolve, 500));
+            }
+            
+            log('=== API测试完成 ===');
+        }
+
+        function saveResults() {
+            const results = {
+                timestamp: new Date().toISOString(),
+                token: currentToken ? currentToken.substring(0, 50) + '...' : 'None',
+                authStatus: document.getElementById('auth-status').innerHTML,
+                apiResults: document.getElementById('api-results').innerHTML,
+                logs: document.getElementById('log-area').value
+            };
+            
+            const blob = new Blob([JSON.stringify(results, null, 2)], {type: 'application/json'});
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = `trading_console_test_${Date.now()}.json`;
+            a.click();
+            URL.revokeObjectURL(url);
+            
+            log('✅ 测试结果已保存');
+        }
+
+        // 页面加载时自动检查Token状态
+        window.addEventListener('load', () => {
+            log('页面加载完成，开始初始化检查...');
+            testStoredToken();
+        });
+    </script>
+</body>
+</html>

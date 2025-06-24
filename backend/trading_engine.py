@@ -196,8 +196,7 @@ class ExchangeManager:
                 logger.info(f"Created exchange instance for {exchange_account.exchange_name}")
             except Exception as e:
                 logger.error(f"Failed to create exchange instance: {e}")
-                
-                # For OKX, fallback to mock if real exchange fails
+                  # For OKX, fallback to mock if real exchange fails
                 if exchange_name == 'okex':
                     logger.warning("OKX real exchange failed, using mock exchange")
                     self.exchanges[key] = MockOKXExchange(config)
@@ -209,6 +208,68 @@ class ExchangeManager:
     async def get_balance(self, exchange_account: ExchangeAccount) -> Dict:
         """Get account balance from exchange"""
         try:
+            # 对于OKX，优先使用OKXAuthFixer获取真实余额
+            if exchange_account.exchange_name.lower() == 'okex':
+                try:
+                    from okx_auth_fixer import OKXAuthFixer
+                    
+                    logger.info(f"Using OKXAuthFixer to fetch balance for {exchange_account.exchange_name}")
+                    
+                    # 创建认证修复器
+                    auth_fixer = OKXAuthFixer(
+                        exchange_account.api_key,
+                        exchange_account.api_secret,
+                        exchange_account.api_passphrase,
+                        exchange_account.is_testnet
+                    )
+                      # 获取余额 - 在执行器中运行同步代码
+                    import asyncio
+                    import concurrent.futures
+                    
+                    loop = asyncio.get_event_loop()
+                    with concurrent.futures.ThreadPoolExecutor() as executor:
+                        balance_result = await loop.run_in_executor(
+                            executor, auth_fixer.get_balance
+                        )
+                    
+                    if balance_result['success']:
+                        # 转换OKX API格式为CCXT格式
+                        balance_data = balance_result.get('data', [])
+                        formatted_balance = {
+                            'info': balance_data,
+                            'free': {},
+                            'used': {},
+                            'total': {}
+                        }
+                        
+                        if balance_data:
+                            for item in balance_data[0].get('details', []):
+                                ccy = item.get('ccy', '')
+                                available = float(item.get('availBal', '0'))
+                                frozen = float(item.get('frozenBal', '0'))
+                                total = float(item.get('eq', '0'))
+                                
+                                if total > 0:  # 只包含有余额的币种
+                                    formatted_balance[ccy] = {
+                                        'free': available,
+                                        'used': frozen,
+                                        'total': total
+                                    }
+                                    formatted_balance['free'][ccy] = available
+                                    formatted_balance['used'][ccy] = frozen
+                                    formatted_balance['total'][ccy] = total
+                        
+                        logger.info(f"OKXAuthFixer balance fetched successfully")
+                        return formatted_balance
+                    else:
+                        logger.warning(f"OKXAuthFixer failed: {balance_result['message']}, using CCXT fallback")
+                        
+                except ImportError:
+                    logger.warning("OKXAuthFixer not available, using CCXT method")
+                except Exception as e:
+                    logger.warning(f"OKXAuthFixer failed: {e}, using CCXT fallback")
+            
+            # 使用原来的CCXT方法（包括其他交易所和OKX回退）
             exchange = self.get_exchange(exchange_account)
             logger.info(f"Fetching balance for {exchange_account.exchange_name}")
             
@@ -286,8 +347,7 @@ class ExchangeManager:
                     }
                     mock_exchange = MockOKXExchange(config)
                     return await mock_exchange.fetch_ticker(symbol)
-                except Exception as mock_error:
-                    logger.error(f"Mock exchange also failed: {mock_error}")
+                except Exception as mock_error:                    logger.error(f"Mock exchange also failed: {mock_error}")
             
             # Provide specific error messages
             if "Invalid symbol" in str(e) or "symbol not found" in str(e).lower():
@@ -323,91 +383,78 @@ class ExchangeManager:
             logger.error(f"Error placing order: {e}")
             raise
 
-    async def test_connection(self, exchange: str, api_key: str, secret_key: str, 
+    async def test_connection(self, exchange: str, api_key: str, secret_key: str,
                              passphrase: Optional[str] = None, is_testnet: bool = False) -> Dict:
         """Test exchange connection without saving account"""
         try:
             logger.info(f"Testing connection to {exchange} (testnet: {is_testnet})")
             
             if exchange.lower() in ['okx', 'okex']:
-                # Check if OKX API is accessible first
-                if not check_okx_connectivity():
-                    logger.warning("OKX API not accessible, using mock exchange for test")
-                    config = {
-                        'apiKey': api_key,
-                        'secret': secret_key,
-                        'passphrase': passphrase,
-                        'sandbox': is_testnet,
-                    }
-                    mock_exchange = MockOKXExchange(config)
-                    balance = await mock_exchange.fetch_balance()
-                    return {
-                        'status': 'success',
-                        'message': 'Mock connection successful (OKX API not accessible)',
-                        'exchange': 'okx',
-                        'testnet': is_testnet,
-                        'balance_preview': {
-                            'USDT': balance['total'].get('USDT', 0),
-                            'BTC': balance['total'].get('BTC', 0),
-                            'ETH': balance['total'].get('ETH', 0)
-                        }
-                    }
-                
-                # Try real OKX connection
+                # 使用改进的OKX认证测试
                 try:
-                    config = {
-                        'apiKey': api_key,
-                        'secret': secret_key,
-                        'passphrase': passphrase,
-                        'sandbox': is_testnet,
-                        'enableRateLimit': True,
-                        'hostname': 'www.okx.com',
-                        'timeout': 10000,
-                        'options': {
-                            'defaultType': 'spot',
-                        }
-                    }
+                    from okx_auth_fixer import OKXAuthFixer
                     
-                    exchange_class = getattr(ccxt, 'okex')
-                    test_exchange = exchange_class(config)
+                    # 创建认证修复器
+                    auth_fixer = OKXAuthFixer(api_key, secret_key, passphrase, is_testnet)
                     
-                    # Test by fetching balance
-                    balance = await test_exchange.fetch_balance()
-                    await test_exchange.close()
+                    # 测试认证
+                    auth_result = auth_fixer.test_auth()
                     
-                    return {
-                        'status': 'success',
-                        'message': 'Real OKX connection successful',
-                        'exchange': 'okx',
-                        'testnet': is_testnet,
-                        'balance_preview': {
-                            currency: data for currency, data in balance.get('total', {}).items() 
-                            if data > 0
-                        }
-                    }
+                    if auth_result['success']:
+                        # 获取余额信息
+                        balance_result = auth_fixer.get_balance()
+                        
+                        if balance_result['success']:
+                            balance_data = balance_result.get('data', [])
+                            preview = {}
+                            
+                            # 解析余额数据
+                            if balance_data:
+                                for item in balance_data[0].get('details', []):
+                                    ccy = item.get('ccy', '')
+                                    total = float(item.get('eq', '0'))
+                                    if total > 0:
+                                        preview[ccy] = total
+                            
+                            return {
+                                'status': 'success',
+                                'message': 'OKX API连接成功，余额获取正常',
+                                'exchange': 'okx',
+                                'testnet': is_testnet,
+                                'balance_preview': preview or {'USDT': 0, 'BTC': 0, 'ETH': 0}
+                            }
+                        else:
+                            # 认证成功但余额获取失败，仍然算作成功连接
+                            return {
+                                'status': 'success',
+                                'message': f'OKX认证成功，但余额获取失败: {balance_result["message"]}',
+                                'exchange': 'okx',
+                                'testnet': is_testnet,
+                                'balance_preview': {'USDT': 0, 'BTC': 0, 'ETH': 0}
+                            }
+                    else:
+                        # 认证失败，提供详细错误信息
+                        error_msg = auth_result['message']
+                        code = auth_result.get('code', '')
+                        
+                        if code == '50111':
+                            raise Exception("API Key无效，请检查API Key是否正确")
+                        elif code == '50112':
+                            raise Exception("API签名无效，请检查Secret Key和Passphrase是否正确")
+                        elif code == '50113':
+                            raise Exception("API权限不足，请检查API权限设置")
+                        elif code == '50114':
+                            raise Exception("IP访问被拒绝，请检查IP白名单设置")
+                        elif 'timestamp' in error_msg.lower():
+                            raise Exception("时间戳错误，请检查系统时间是否正确")
+                        else:
+                            raise Exception(f"OKX API认证失败: {error_msg}")
+                            
+                except ImportError:
+                    # 如果无法导入OKXAuthFixer，回退到原来的方法
+                    logger.warning("OKXAuthFixer不可用，使用传统方法")
+                    return await self._test_connection_fallback(exchange, api_key, secret_key, passphrase, is_testnet)
                     
-                except Exception as real_error:
-                    logger.warning(f"Real OKX connection failed: {real_error}, using mock")
-                    # Fallback to mock exchange
-                    config = {
-                        'apiKey': api_key,
-                        'secret': secret_key,
-                        'passphrase': passphrase,
-                        'sandbox': is_testnet,
-                    }
-                    mock_exchange = MockOKXExchange(config)
-                    balance = await mock_exchange.fetch_balance()
-                    return {
-                        'status': 'success',
-                        'message': f'Mock connection (Real API failed: {str(real_error)[:100]})',
-                        'exchange': 'okx',
-                        'testnet': is_testnet,
-                        'balance_preview': {
-                            'USDT': balance['total'].get('USDT', 0),
-                            'BTC': balance['total'].get('BTC', 0),
-                            'ETH': balance['total'].get('ETH', 0)
-                        }
-                    }
             else:
                 raise Exception(f"Exchange {exchange} not supported yet")
                 
@@ -415,19 +462,105 @@ class ExchangeManager:
             error_msg = str(e)
             logger.error(f"Connection test failed: {error_msg}")
             
-            # Provide user-friendly error messages
+            # 提供用户友好的错误消息
             if "Missing required OKX credentials" in error_msg:
                 raise Exception("缺少必要的 OKX 凭据：API Key、Secret 和 Passphrase 都是必需的")
-            elif "Invalid API" in error_msg or "Authentication" in error_msg:
-                raise Exception("API认证失败，请检查API密钥、Secret和Passphrase是否正确")
-            elif "Permission" in error_msg:
-                raise Exception("API权限不足，请检查API密钥是否有读取权限")
-            elif "IP" in error_msg or "whitelist" in error_msg.lower():
-                raise Exception("IP访问被拒绝，请检查IP白名单设置")
+            elif "API Key无效" in error_msg:
+                raise Exception("API Key无效，请检查是否正确复制")
+            elif "签名无效" in error_msg:
+                raise Exception("API签名无效，请检查Secret Key和Passphrase是否正确")
+            elif "权限不足" in error_msg:
+                raise Exception("API权限不足，请确保API Key有读取权限")
+            elif "IP访问被拒绝" in error_msg:
+                raise Exception("IP访问被拒绝，请检查OKX账户的IP白名单设置")
+            elif "时间戳错误" in error_msg:
+                raise Exception("系统时间同步问题，请检查计算机时间是否正确")
             elif "Network" in error_msg or "timeout" in error_msg.lower():
-                raise Exception("网络连接失败，请检查网络设置")
+                raise Exception("网络连接失败，请检查网络设置和代理配置")
             else:
                 raise Exception(f"连接测试失败: {error_msg}")
+    
+    async def _test_connection_fallback(self, exchange: str, api_key: str, secret_key: str, 
+                                      passphrase: Optional[str] = None, is_testnet: bool = False) -> Dict:
+        """传统的连接测试方法（回退方案）"""
+        # Check if OKX API is accessible first
+        if not check_okx_connectivity():
+            logger.warning("OKX API not accessible, using mock exchange for test")
+            config = {
+                'apiKey': api_key,
+                'secret': secret_key,
+                'passphrase': passphrase,
+                'sandbox': is_testnet,
+            }
+            mock_exchange = MockOKXExchange(config)
+            balance = await mock_exchange.fetch_balance()
+            return {
+                'status': 'success',
+                'message': 'Mock connection successful (OKX API not accessible)',
+                'exchange': 'okx',
+                'testnet': is_testnet,
+                'balance_preview': {
+                    'USDT': balance['total'].get('USDT', 0),
+                    'BTC': balance['total'].get('BTC', 0),
+                    'ETH': balance['total'].get('ETH', 0)
+                }
+            }
+        
+        # Try real OKX connection
+        try:
+            config = {
+                'apiKey': api_key,
+                'secret': secret_key,
+                'passphrase': passphrase,
+                'sandbox': is_testnet,
+                'enableRateLimit': True,
+                'hostname': 'www.okx.com',
+                'timeout': 10000,
+                'options': {
+                    'defaultType': 'spot',
+                }
+            }
+            
+            exchange_class = getattr(ccxt, 'okex')
+            test_exchange = exchange_class(config)
+            
+            # Test by fetching balance
+            balance = await test_exchange.fetch_balance()
+            await test_exchange.close()
+            
+            return {
+                'status': 'success',
+                'message': 'Real OKX connection successful',
+                'exchange': 'okx',
+                'testnet': is_testnet,
+                'balance_preview': {
+                    currency: data for currency, data in balance.get('total', {}).items() 
+                    if data > 0
+                }
+            }
+            
+        except Exception as real_error:
+            logger.warning(f"Real OKX connection failed: {real_error}, using mock")
+            # Fallback to mock exchange
+            config = {
+                'apiKey': api_key,
+                'secret': secret_key,
+                'passphrase': passphrase,
+                'sandbox': is_testnet,
+            }
+            mock_exchange = MockOKXExchange(config)
+            balance = await mock_exchange.fetch_balance()
+            return {
+                'status': 'success',
+                'message': f'Mock connection (Real API failed: {str(real_error)[:100]})',
+                'exchange': 'okx',
+                'testnet': is_testnet,
+                'balance_preview': {
+                    'USDT': balance['total'].get('USDT', 0),
+                    'BTC': balance['total'].get('BTC', 0),
+                    'ETH': balance['total'].get('ETH', 0)
+                }
+            }
 
 class StrategyEngine:
     def __init__(self, exchange_manager: ExchangeManager):

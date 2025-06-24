@@ -4,7 +4,7 @@ import { useAuthStore } from '@/stores/auth'
 
 const api = axios.create({
           baseURL: '/api',
-          timeout: 10000
+          timeout: 15000  // Increase timeout to 15 seconds for dashboard
 })
 
 // Request interceptor

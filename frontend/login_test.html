@@ -1,0 +1,162 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>前端登录测试</title>
+    <style>
+        body { font-family: Arial, sans-serif; margin: 20px; }
+        .test-box { border: 1px solid #ccc; padding: 20px; margin: 10px 0; }
+        .result { margin: 10px 0; padding: 10px; }
+        .success { background-color: #d4edda; color: #155724; }
+        .error { background-color: #f8d7da; color: #721c24; }
+        input, button { padding: 8px; margin: 5px; }
+        button { cursor: pointer; }
+    </style>
+</head>
+<body>
+    <h1>Trading Console 前端登录测试</h1>
+    
+    <div class="test-box">
+        <h2>登录测试</h2>
+        <input type="text" id="username" placeholder="用户名" value="111">
+        <input type="password" id="password" placeholder="密码" value="123456">
+        <button onclick="testLogin()">测试登录</button>
+        <div id="loginResult"></div>
+    </div>
+
+    <div class="test-box">
+        <h2>API连接测试</h2>
+        <button onclick="testBackendConnection()">测试后端连接</button>
+        <div id="connectionResult"></div>
+    </div>
+
+    <div class="test-box">
+        <h2>代理测试</h2>
+        <button onclick="testApiRoutes()">测试API路由</button>
+        <div id="routeResult"></div>
+    </div>
+
+    <script>
+        const API_BASE = '/api';
+        
+        function showResult(elementId, message, isSuccess) {
+            const element = document.getElementById(elementId);
+            element.innerHTML = message;
+            element.className = 'result ' + (isSuccess ? 'success' : 'error');
+        }
+
+        async function testLogin() {
+            const username = document.getElementById('username').value;
+            const password = document.getElementById('password').value;
+            
+            try {
+                const response = await fetch(`${API_BASE}/auth/login`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({ username, password })
+                });
+
+                if (response.ok) {
+                    const data = await response.json();
+                    showResult('loginResult', `✅ 登录成功！Token: ${data.access_token.substring(0, 50)}...`, true);
+                    
+                    // 测试获取用户信息
+                    await testUserInfo(data.access_token);
+                } else {
+                    const error = await response.text();
+                    showResult('loginResult', `❌ 登录失败 (${response.status}): ${error}`, false);
+                }
+            } catch (error) {
+                showResult('loginResult', `❌ 请求失败: ${error.message}`, false);
+            }
+        }
+
+        async function testUserInfo(token) {
+            try {
+                const response = await fetch(`${API_BASE}/auth/me`, {
+                    headers: {
+                        'Authorization': `Bearer ${token}`,
+                        'Content-Type': 'application/json',
+                    }
+                });
+
+                if (response.ok) {
+                    const userData = await response.json();
+                    showResult('loginResult', 
+                        document.getElementById('loginResult').innerHTML + 
+                        `<br>✅ 用户信息获取成功: ${userData.username} (${userData.email})`, true);
+                } else {
+                    showResult('loginResult', 
+                        document.getElementById('loginResult').innerHTML + 
+                        `<br>❌ 用户信息获取失败: ${response.status}`, false);
+                }
+            } catch (error) {
+                showResult('loginResult', 
+                    document.getElementById('loginResult').innerHTML + 
+                    `<br>❌ 用户信息请求失败: ${error.message}`, false);
+            }
+        }
+
+        async function testBackendConnection() {
+            try {
+                const response = await fetch(`${API_BASE}/health`);
+                if (response.ok) {
+                    const data = await response.json();
+                    showResult('connectionResult', `✅ 后端连接正常: ${JSON.stringify(data)}`, true);
+                } else {
+                    showResult('connectionResult', `❌ 后端连接失败: ${response.status}`, false);
+                }
+            } catch (error) {
+                showResult('connectionResult', `❌ 后端连接错误: ${error.message}`, false);
+            }
+        }
+
+        async function testApiRoutes() {
+            const routes = [
+                '/health',
+                '/dashboard/stats',
+                '/strategies',
+                '/trades',
+                '/exchanges/'
+            ];
+
+            let results = '<h3>API路由测试结果:</h3>';
+            
+            for (const route of routes) {
+                try {
+                    const response = await fetch(`${API_BASE}${route}`);
+                    if (route === '/health') {
+                        // 健康检查不需要认证
+                        if (response.ok) {
+                            results += `<div>✅ ${route}: 200 OK</div>`;
+                        } else {
+                            results += `<div>❌ ${route}: ${response.status}</div>`;
+                        }
+                    } else {
+                        // 其他路由需要认证，401是预期的
+                        if (response.status === 401) {
+                            results += `<div>✅ ${route}: 401 (需要认证 - 正常)</div>`;
+                        } else if (response.status === 404) {
+                            results += `<div>❌ ${route}: 404 (路由不存在)</div>`;
+                        } else {
+                            results += `<div>⚠️ ${route}: ${response.status}</div>`;
+                        }
+                    }
+                } catch (error) {
+                    results += `<div>❌ ${route}: 请求失败 - ${error.message}</div>`;
+                }
+            }
+            
+            document.getElementById('routeResult').innerHTML = results;
+        }
+
+        // 页面加载时自动测试连接
+        window.onload = function() {
+            testBackendConnection();
+        };
+    </script>
+</body>
+</html>

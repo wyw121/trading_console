@@ -1,0 +1,280 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>前端API调试</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 20px;
+        }
+        .test-section {
+            background: #f5f5f5;
+            padding: 15px;
+            margin: 10px 0;
+            border-radius: 5px;
+        }
+        .success { color: green; }
+        .error { color: red; }
+        .info { color: blue; }
+        button {
+            background: #007bff;
+            color: white;
+            border: none;
+            padding: 8px 16px;
+            border-radius: 4px;
+            cursor: pointer;
+            margin: 5px;
+        }
+        button:hover {
+            background: #0056b3;
+        }
+        textarea {
+            width: 100%;
+            height: 200px;
+            font-family: monospace;
+            padding: 10px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+        }
+        .status-item {
+            margin: 5px 0;
+            padding: 5px;
+            border-left: 3px solid #ccc;
+            padding-left: 10px;
+        }
+    </style>
+</head>
+<body>
+    <h1>🔍 前端API调试工具</h1>
+    
+    <div class="test-section">
+        <h2>服务状态检查</h2>
+        <div id="service-status">检查中...</div>
+        <button onclick="checkServices()">重新检查</button>
+    </div>
+
+    <div class="test-section">
+        <h2>认证测试</h2>
+        <button onclick="testLogin()">测试登录</button>
+        <button onclick="checkToken()">检查Token</button>
+        <button onclick="testUserInfo()">测试用户信息</button>
+        <div id="auth-result"></div>
+    </div>
+
+    <div class="test-section">
+        <h2>Dashboard API测试</h2>
+        <button onclick="testDashboardAPI()">测试Dashboard API</button>
+        <button onclick="testAllAPIs()">测试所有API</button>
+        <div id="api-result"></div>
+    </div>
+
+    <div class="test-section">
+        <h2>详细日志</h2>
+        <button onclick="clearLog()">清空日志</button>
+        <textarea id="debug-log" readonly></textarea>
+    </div>
+
+    <script>
+        const API_BASE = '/api';
+        let currentToken = localStorage.getItem('token');
+
+        function log(message, type = 'info') {
+            const timestamp = new Date().toLocaleTimeString();
+            const logArea = document.getElementById('debug-log');
+            const logMessage = `[${timestamp}] ${type.toUpperCase()}: ${message}\n`;
+            logArea.value += logMessage;
+            logArea.scrollTop = logArea.scrollHeight;
+            
+            console.log(logMessage);
+        }
+
+        function clearLog() {
+            document.getElementById('debug-log').value = '';
+        }
+
+        async function checkServices() {
+            const statusDiv = document.getElementById('service-status');
+            statusDiv.innerHTML = '检查中...';
+            
+            const checks = [
+                { name: '后端健康检查', url: '/health' },
+                { name: '前端代理', url: '/api/health' }
+            ];
+
+            let statusHtml = '';
+            for (const check of checks) {
+                try {
+                    const response = await fetch(check.url);
+                    if (response.ok) {
+                        statusHtml += `<div class="status-item success">✅ ${check.name}: 正常</div>`;
+                        log(`${check.name}: 正常 (${response.status})`);
+                    } else {
+                        statusHtml += `<div class="status-item error">❌ ${check.name}: 错误 ${response.status}</div>`;
+                        log(`${check.name}: 错误 ${response.status}`, 'error');
+                    }
+                } catch (error) {
+                    statusHtml += `<div class="status-item error">❌ ${check.name}: 连接失败</div>`;
+                    log(`${check.name}: 连接失败 - ${error.message}`, 'error');
+                }
+            }
+            
+            statusDiv.innerHTML = statusHtml;
+        }
+
+        async function testLogin() {
+            log('开始测试登录...');
+            try {
+                const formData = new FormData();
+                formData.append('username', 'admin');
+                formData.append('password', 'admin123');
+
+                const response = await fetch(`${API_BASE}/auth/login`, {
+                    method: 'POST',
+                    body: formData
+                });
+
+                if (response.ok) {
+                    const data = await response.json();
+                    currentToken = data.access_token;
+                    localStorage.setItem('token', currentToken);
+                    log(`登录成功，Token: ${currentToken.substring(0, 50)}...`);
+                    document.getElementById('auth-result').innerHTML = 
+                        '<div class="success">✅ 登录成功</div>';
+                } else {
+                    const errorText = await response.text();
+                    log(`登录失败: ${response.status} - ${errorText}`, 'error');
+                    document.getElementById('auth-result').innerHTML = 
+                        `<div class="error">❌ 登录失败: ${response.status}</div>`;
+                }
+            } catch (error) {
+                log(`登录异常: ${error.message}`, 'error');
+                document.getElementById('auth-result').innerHTML = 
+                    `<div class="error">❌ 登录异常: ${error.message}</div>`;
+            }
+        }
+
+        function checkToken() {
+            if (currentToken) {
+                log(`当前Token: ${currentToken.substring(0, 50)}...`);
+                document.getElementById('auth-result').innerHTML = 
+                    '<div class="success">✅ Token存在</div>';
+            } else {
+                log('没有Token', 'error');
+                document.getElementById('auth-result').innerHTML = 
+                    '<div class="error">❌ 没有Token</div>';
+            }
+        }
+
+        async function testUserInfo() {
+            if (!currentToken) {
+                log('没有Token，无法测试用户信息', 'error');
+                return;
+            }
+
+            log('测试获取用户信息...');
+            try {
+                const response = await fetch(`${API_BASE}/auth/me`, {
+                    headers: {
+                        'Authorization': `Bearer ${currentToken}`
+                    }
+                });
+
+                if (response.ok) {
+                    const userData = await response.json();
+                    log(`用户信息获取成功: ${JSON.stringify(userData)}`);
+                    document.getElementById('auth-result').innerHTML = 
+                        '<div class="success">✅ 用户信息获取成功</div>';
+                } else {
+                    const errorText = await response.text();
+                    log(`用户信息获取失败: ${response.status} - ${errorText}`, 'error');
+                    document.getElementById('auth-result').innerHTML = 
+                        `<div class="error">❌ 用户信息获取失败: ${response.status}</div>`;
+                }
+            } catch (error) {
+                log(`用户信息获取异常: ${error.message}`, 'error');
+                document.getElementById('auth-result').innerHTML = 
+                    `<div class="error">❌ 用户信息获取异常: ${error.message}</div>`;
+            }
+        }
+
+        async function testDashboardAPI() {
+            if (!currentToken) {
+                log('没有Token，先进行登录', 'error');
+                await testLogin();
+                if (!currentToken) return;
+            }
+
+            log('测试Dashboard API...');
+            try {
+                const response = await fetch(`${API_BASE}/dashboard/stats`, {
+                    headers: {
+                        'Authorization': `Bearer ${currentToken}`
+                    }
+                });
+
+                if (response.ok) {
+                    const dashboardData = await response.json();
+                    log(`Dashboard数据获取成功: ${JSON.stringify(dashboardData, null, 2)}`);
+                    document.getElementById('api-result').innerHTML = 
+                        `<div class="success">✅ Dashboard API正常</div>
+                         <pre>${JSON.stringify(dashboardData, null, 2)}</pre>`;
+                } else {
+                    const errorText = await response.text();
+                    log(`Dashboard API失败: ${response.status} - ${errorText}`, 'error');
+                    document.getElementById('api-result').innerHTML = 
+                        `<div class="error">❌ Dashboard API失败: ${response.status}</div>`;
+                }
+            } catch (error) {
+                log(`Dashboard API异常: ${error.message}`, 'error');
+                document.getElementById('api-result').innerHTML = 
+                    `<div class="error">❌ Dashboard API异常: ${error.message}</div>`;
+            }
+        }
+
+        async function testAllAPIs() {
+            const apis = [
+                { name: 'Dashboard统计', url: '/dashboard/stats' },
+                { name: '交易记录', url: '/trades' },
+                { name: '交易所账户', url: '/exchanges/' },
+                { name: '策略列表', url: '/strategies' }
+            ];
+
+            let resultHtml = '';
+            for (const api of apis) {
+                try {
+                    const response = await fetch(`${API_BASE}${api.url}`, {
+                        headers: {
+                            'Authorization': `Bearer ${currentToken}`
+                        }
+                    });
+
+                    if (response.ok) {
+                        const data = await response.json();
+                        resultHtml += `<div class="success">✅ ${api.name}: 正常 (${Array.isArray(data) ? data.length : 'object'} 项)</div>`;
+                        log(`${api.name}: 正常 - ${JSON.stringify(data).substring(0, 100)}...`);
+                    } else {
+                        resultHtml += `<div class="error">❌ ${api.name}: 错误 ${response.status}</div>`;
+                        log(`${api.name}: 错误 ${response.status}`, 'error');
+                    }
+                } catch (error) {
+                    resultHtml += `<div class="error">❌ ${api.name}: 异常 ${error.message}</div>`;
+                    log(`${api.name}: 异常 ${error.message}`, 'error');
+                }
+            }
+            
+            document.getElementById('api-result').innerHTML = resultHtml;
+        }
+
+        // 页面加载时自动检查
+        window.addEventListener('load', () => {
+            log('页面加载完成，开始检查服务状态');
+            checkServices();
+            checkToken();
+        });
+    </script>
+</body>
+</html>

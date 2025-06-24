@@ -1,0 +1,365 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>前端登录调试工具</title>
+    <style>
+        body { font-family: Arial, sans-serif; margin: 20px; background: #f5f5f5; }
+        .debug-container { max-width: 800px; margin: 0 auto; }
+        .debug-box { background: white; border: 1px solid #ddd; padding: 20px; margin: 15px 0; border-radius: 8px; }
+        .result { margin: 10px 0; padding: 10px; border-radius: 4px; }
+        .success { background-color: #d4edda; color: #155724; border: 1px solid #c3e6cb; }
+        .error { background-color: #f8d7da; color: #721c24; border: 1px solid #f5c6cb; }
+        .warning { background-color: #fff3cd; color: #856404; border: 1px solid #ffeaa7; }
+        .info { background-color: #d1ecf1; color: #0c5460; border: 1px solid #bee5eb; }
+        input, button { padding: 10px; margin: 5px; border: 1px solid #ddd; border-radius: 4px; }
+        button { cursor: pointer; background: #007bff; color: white; border: none; }
+        button:hover { background: #0056b3; }
+        .log { background: #f8f9fa; padding: 10px; border-left: 4px solid #007bff; margin: 10px 0; font-family: monospace; }
+        .test-section { margin: 20px 0; }
+        h3 { color: #333; margin-bottom: 10px; }
+    </style>
+</head>
+<body>
+    <div class="debug-container">
+        <h1>🔧 Trading Console 前端登录调试工具</h1>
+        
+        <div class="debug-box">
+            <h3>📊 环境检查</h3>
+            <button onclick="checkEnvironment()">检查前端环境</button>
+            <div id="envResult"></div>
+        </div>
+
+        <div class="debug-box">
+            <h3>🔗 后端连接测试</h3>
+            <button onclick="testBackendDirect()">直连后端测试</button>
+            <button onclick="testBackendProxy()">代理连接测试</button>
+            <div id="backendResult"></div>
+        </div>
+
+        <div class="debug-box">
+            <h3>🔐 登录功能测试</h3>
+            <div class="test-section">
+                <input type="text" id="username" placeholder="用户名" value="111" style="width: 200px;">
+                <input type="password" id="password" placeholder="密码" value="123456" style="width: 200px;">
+                <button onclick="testLogin()">测试登录</button>
+                <button onclick="testLoginDirect()">直连登录</button>
+            </div>
+            <div id="loginResult"></div>
+        </div>
+
+        <div class="debug-box">
+            <h3>🎯 登录流程模拟</h3>
+            <button onclick="simulateVueLogin()">模拟Vue组件登录</button>
+            <div id="vueResult"></div>
+        </div>
+
+        <div class="debug-box">
+            <h3>📝 调试日志</h3>
+            <button onclick="clearLogs()">清除日志</button>
+            <div id="debugLogs"></div>
+        </div>
+    </div>
+
+    <script>
+        let logCounter = 0;
+        
+        function log(message, type = 'info') {
+            logCounter++;
+            const timestamp = new Date().toLocaleTimeString();
+            const logElement = document.getElementById('debugLogs');
+            const logEntry = document.createElement('div');
+            logEntry.className = 'log';
+            logEntry.innerHTML = `<strong>[${logCounter}] ${timestamp}:</strong> ${message}`;
+            logElement.appendChild(logEntry);
+            logElement.scrollTop = logElement.scrollHeight;
+            console.log(`[${type.toUpperCase()}] ${message}`);
+        }
+
+        function showResult(elementId, message, isSuccess, isWarning = false) {
+            const element = document.getElementById(elementId);
+            element.innerHTML = message;
+            element.className = 'result ' + (isSuccess ? 'success' : (isWarning ? 'warning' : 'error'));
+        }
+
+        function clearLogs() {
+            document.getElementById('debugLogs').innerHTML = '';
+            logCounter = 0;
+        }
+
+        async function checkEnvironment() {
+            log('开始环境检查...');
+            let envInfo = '<h4>环境信息:</h4>';
+            
+            envInfo += `<div>• 用户代理: ${navigator.userAgent}</div>`;
+            envInfo += `<div>• 当前URL: ${window.location.href}</div>`;
+            envInfo += `<div>• 协议: ${window.location.protocol}</div>`;
+            envInfo += `<div>• 主机: ${window.location.host}</div>`;
+            
+            // 检查必要的API
+            const hasLocalStorage = typeof(Storage) !== "undefined";
+            const hasFetch = typeof(fetch) !== "undefined";
+            
+            envInfo += `<div>• LocalStorage: ${hasLocalStorage ? '✅ 支持' : '❌ 不支持'}</div>`;
+            envInfo += `<div>• Fetch API: ${hasFetch ? '✅ 支持' : '❌ 不支持'}</div>`;
+            
+            showResult('envResult', envInfo, true, false);
+            log('环境检查完成');
+        }
+
+        async function testBackendDirect() {
+            log('测试直连后端...');
+            try {
+                const response = await fetch('http://localhost:8000/api/health');
+                if (response.ok) {
+                    const data = await response.json();
+                    showResult('backendResult', `✅ 直连后端成功: ${JSON.stringify(data)}`, true);
+                    log('直连后端成功');
+                } else {
+                    showResult('backendResult', `❌ 直连后端失败: ${response.status}`, false);
+                    log(`直连后端失败: ${response.status}`);
+                }
+            } catch (error) {
+                showResult('backendResult', `❌ 直连后端错误: ${error.message}`, false);
+                log(`直连后端错误: ${error.message}`);
+            }
+        }
+
+        async function testBackendProxy() {
+            log('测试代理连接后端...');
+            try {
+                const response = await fetch('/api/health');
+                if (response.ok) {
+                    const data = await response.json();
+                    showResult('backendResult', 
+                        document.getElementById('backendResult').innerHTML + 
+                        `<br>✅ 代理连接成功: ${JSON.stringify(data)}`, true);
+                    log('代理连接成功');
+                } else {
+                    showResult('backendResult', 
+                        document.getElementById('backendResult').innerHTML + 
+                        `<br>❌ 代理连接失败: ${response.status}`, false);
+                    log(`代理连接失败: ${response.status}`);
+                }
+            } catch (error) {
+                showResult('backendResult', 
+                    document.getElementById('backendResult').innerHTML + 
+                    `<br>❌ 代理连接错误: ${error.message}`, false);
+                log(`代理连接错误: ${error.message}`);
+            }
+        }
+
+        async function testLogin() {
+            const username = document.getElementById('username').value;
+            const password = document.getElementById('password').value;
+            
+            log(`尝试登录用户: ${username}`);
+            
+            try {
+                const response = await fetch('/api/auth/login', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({ username, password })
+                });
+
+                log(`登录响应状态: ${response.status}`);
+
+                if (response.ok) {
+                    const data = await response.json();
+                    const token = data.access_token;
+                    localStorage.setItem('debug_token', token);
+                    
+                    showResult('loginResult', `✅ 代理登录成功！Token: ${token.substring(0, 50)}...`, true);
+                    log(`登录成功，Token: ${token.substring(0, 30)}...`);
+                    
+                    // 测试获取用户信息
+                    await testUserInfo(token);
+                } else {
+                    const error = await response.text();
+                    showResult('loginResult', `❌ 代理登录失败 (${response.status}): ${error}`, false);
+                    log(`登录失败: ${response.status} - ${error}`);
+                }
+            } catch (error) {
+                showResult('loginResult', `❌ 登录请求失败: ${error.message}`, false);
+                log(`登录请求失败: ${error.message}`);
+            }
+        }
+
+        async function testLoginDirect() {
+            const username = document.getElementById('username').value;
+            const password = document.getElementById('password').value;
+            
+            log(`尝试直连登录用户: ${username}`);
+            
+            try {
+                const response = await fetch('http://localhost:8000/api/auth/login', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({ username, password })
+                });
+
+                if (response.ok) {
+                    const data = await response.json();
+                    showResult('loginResult', 
+                        document.getElementById('loginResult').innerHTML + 
+                        `<br>✅ 直连登录成功！Token: ${data.access_token.substring(0, 50)}...`, true);
+                    log('直连登录成功');
+                } else {
+                    const error = await response.text();
+                    showResult('loginResult', 
+                        document.getElementById('loginResult').innerHTML + 
+                        `<br>❌ 直连登录失败 (${response.status}): ${error}`, false);
+                    log(`直连登录失败: ${response.status}`);
+                }
+            } catch (error) {
+                showResult('loginResult', 
+                    document.getElementById('loginResult').innerHTML + 
+                    `<br>❌ 直连登录请求失败: ${error.message}`, false);
+                log(`直连登录请求失败: ${error.message}`);
+            }
+        }
+
+        async function testUserInfo(token) {
+            log('测试获取用户信息...');
+            try {
+                const response = await fetch('/api/auth/me', {
+                    headers: {
+                        'Authorization': `Bearer ${token}`,
+                        'Content-Type': 'application/json',
+                    }
+                });
+
+                if (response.ok) {
+                    const userData = await response.json();
+                    showResult('loginResult', 
+                        document.getElementById('loginResult').innerHTML + 
+                        `<br>✅ 用户信息获取成功: ${userData.username} (${userData.email})`, true);
+                    log(`用户信息获取成功: ${userData.username}`);
+                } else {
+                    showResult('loginResult', 
+                        document.getElementById('loginResult').innerHTML + 
+                        `<br>❌ 用户信息获取失败: ${response.status}`, false);
+                    log(`用户信息获取失败: ${response.status}`);
+                }
+            } catch (error) {
+                showResult('loginResult', 
+                    document.getElementById('loginResult').innerHTML + 
+                    `<br>❌ 用户信息请求失败: ${error.message}`, false);
+                log(`用户信息请求失败: ${error.message}`);
+            }
+        }
+
+        async function simulateVueLogin() {
+            log('模拟Vue组件登录流程...');
+            const username = document.getElementById('username').value;
+            const password = document.getElementById('password').value;
+            
+            // 模拟Vue组件的登录逻辑
+            try {
+                // 1. 表单验证
+                if (!username || !password) {
+                    showResult('vueResult', '❌ 表单验证失败：用户名和密码不能为空', false);
+                    return;
+                }
+                
+                if (password.length < 6) {
+                    showResult('vueResult', '❌ 表单验证失败：密码长度至少6位', false);
+                    return;
+                }
+                
+                log('表单验证通过');
+                
+                // 2. 发送登录请求
+                const response = await fetch('/api/auth/login', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({ username, password })
+                });
+                
+                if (response.ok) {
+                    const data = await response.json();
+                    const token = data.access_token;
+                    
+                    // 3. 存储token
+                    localStorage.setItem('token', token);
+                    log('Token已存储到localStorage');
+                    
+                    // 4. 获取用户信息
+                    const userResponse = await fetch('/api/auth/me', {
+                        headers: {
+                            'Authorization': `Bearer ${token}`,
+                            'Content-Type': 'application/json',
+                        }
+                    });
+                    
+                    if (userResponse.ok) {
+                        const userData = await userResponse.json();
+                        
+                        // 5. 模拟路由跳转
+                        showResult('vueResult', 
+                            `✅ Vue登录流程完成！<br>
+                            • Token已存储<br>
+                            • 用户信息: ${userData.username} (${userData.email})<br>
+                            • 准备跳转到 /dashboard`, true);
+                        log('Vue登录流程完成');
+                        
+                        // 6. 测试dashboard API
+                        setTimeout(() => testDashboardAccess(token), 1000);
+                    } else {
+                        showResult('vueResult', `❌ 获取用户信息失败: ${userResponse.status}`, false);
+                        log(`获取用户信息失败: ${userResponse.status}`);
+                    }
+                } else {
+                    const error = await response.text();
+                    showResult('vueResult', `❌ 登录失败: ${error}`, false);
+                    log(`登录失败: ${error}`);
+                }
+            } catch (error) {
+                showResult('vueResult', `❌ Vue登录流程错误: ${error.message}`, false);
+                log(`Vue登录流程错误: ${error.message}`);
+            }
+        }
+
+        async function testDashboardAccess(token) {
+            log('测试Dashboard访问...');
+            try {
+                const response = await fetch('/api/dashboard/stats', {
+                    headers: {
+                        'Authorization': `Bearer ${token}`,
+                        'Content-Type': 'application/json',
+                    }
+                });
+                
+                if (response.ok) {
+                    const data = await response.json();
+                    showResult('vueResult', 
+                        document.getElementById('vueResult').innerHTML + 
+                        `<br>✅ Dashboard数据获取成功: ${data.total_strategies}个策略`, true);
+                    log('Dashboard数据获取成功');
+                } else {
+                    showResult('vueResult', 
+                        document.getElementById('vueResult').innerHTML + 
+                        `<br>❌ Dashboard访问失败: ${response.status}`, false);
+                    log(`Dashboard访问失败: ${response.status}`);
+                }
+            } catch (error) {
+                log(`Dashboard访问错误: ${error.message}`);
+            }
+        }
+
+        // 页面加载时自动执行检查
+        window.onload = function() {
+            log('页面加载完成，开始自动检查...');
+            checkEnvironment();
+            setTimeout(testBackendProxy, 500);
+        };
+    </script>
+</body>
+</html>

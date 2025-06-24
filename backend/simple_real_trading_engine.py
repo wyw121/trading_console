@@ -118,7 +118,7 @@ class SimpleRealExchangeManager:
                 "data": None
             }
     
-    def get_real_balance(self, user_id: int, exchange_name: str, 
+    async def get_real_balance(self, user_id: int, exchange_name: str, 
                         is_testnet: bool = False) -> Dict:
         """获取真实余额信息 - 集成OKX API"""
         try:

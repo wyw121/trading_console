@@ -1,5 +1,5 @@
 """
-简化的Dashboard服务 - 快速修复版本
+简化的Dashboard服务 - 真实余额版本
 """
 import asyncio
 import logging
@@ -7,12 +7,13 @@ from typing import Dict, List, Optional
 from sqlalchemy.orm import Session
 from sqlalchemy import func
 from database import User, Strategy, Trade, ExchangeAccount
+from trading_engine import exchange_manager
 import schemas
 
 logger = logging.getLogger(__name__)
 
 class SimpleDashboardService:
-    """简化的Dashboard服务，减少错误"""
+    """简化的Dashboard服务，支持真实余额"""
     
     @staticmethod
     async def get_dashboard_stats_safe(user_id: int, db: Session) -> schemas.DashboardStats:
@@ -32,34 +33,59 @@ class SimpleDashboardService:
                 Trade.status == "filled"
             ).scalar() or 0.0
             
-            # 暂时不获取余额，避免超时问题
+            # 获取真实余额
             account_balances = []
             
-            # 如果有交易所账户，添加一些模拟余额避免空白
             exchange_accounts = db.query(ExchangeAccount).filter(
                 ExchangeAccount.user_id == user_id,
                 ExchangeAccount.is_active == True
             ).all()
             
-            if exchange_accounts:
-                # 添加示例余额，表明功能正常
-                for account in exchange_accounts[:2]:  # 最多显示2个账户
-                    account_balances.extend([
-                        schemas.AccountBalance(
-                            exchange=account.exchange_name,
-                            currency="USDT",
-                            free=1000.0,
-                            used=0.0,
-                            total=1000.0
-                        ),
-                        schemas.AccountBalance(
-                            exchange=account.exchange_name,
-                            currency="BTC",
-                            free=0.1,
-                            used=0.0,
-                            total=0.1
-                        )
-                    ])
+            for account in exchange_accounts:
+                try:
+                    logger.info(f"Fetching balance for {account.exchange_name}")
+                    
+                    # 使用5秒超时获取余额
+                    balance = await asyncio.wait_for(
+                        exchange_manager.get_balance(account),
+                        timeout=5.0
+                    )
+                    
+                    # 转换余额格式
+                    total_balances = balance.get('total', {})
+                    for currency, amount in total_balances.items():
+                        if amount > 0.001:  # 只显示有意义余额的币种
+                            free_amount = balance.get('free', {}).get(currency, 0)
+                            used_amount = balance.get('used', {}).get(currency, 0)
+                            
+                            account_balances.append(schemas.AccountBalance(
+                                exchange=account.exchange_name,
+                                currency=currency,
+                                free=float(free_amount),
+                                used=float(used_amount),
+                                total=float(amount)
+                            ))
+                            
+                except asyncio.TimeoutError:
+                    logger.warning(f"Timeout fetching balance for {account.exchange_name}")
+                    # 添加提示信息
+                    account_balances.append(schemas.AccountBalance(
+                        exchange=account.exchange_name,
+                        currency="请求超时",                        free=0.0,
+                        used=0.0,
+                        total=0.0
+                    ))
+                    
+                except Exception as e:
+                    logger.warning(f"Error fetching balance for {account.exchange_name}: {e}")
+                    # 添加错误提示
+                    account_balances.append(schemas.AccountBalance(
+                        exchange=account.exchange_name,
+                        currency="获取失败",
+                        free=0.0,
+                        used=0.0,
+                        total=0.0
+                    ))
             
             return schemas.DashboardStats(
                 total_strategies=total_strategies,

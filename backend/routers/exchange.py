@@ -3,6 +3,7 @@ from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from sqlalchemy.orm import Session
 from typing import List
 from datetime import datetime
+import asyncio
 import logging
 import json
 import schemas
@@ -152,36 +153,49 @@ async def get_exchange_accounts(
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
-    """Get user's exchange accounts"""
-    accounts = db.query(ExchangeAccount).filter(ExchangeAccount.user_id == current_user.id).all()
-    
-    # 尝试恢复交易所连接（如果不存在的话）
+    """Get user's exchange accounts - 优化版本，快速响应"""
     try:
-        real_exchange_manager.restore_exchange_connections(current_user.id, accounts)
+        logger.info(f"获取用户 {current_user.id} 的交易所账户列表")
+        
+        # 直接从数据库获取，不进行任何API调用或连接测试
+        accounts = db.query(ExchangeAccount).filter(ExchangeAccount.user_id == current_user.id).all()
+        
+        logger.info(f"找到 {len(accounts)} 个交易所账户")
+        
+        # 快速构建响应，避免任何阻塞操作
+        masked_accounts = []
+        for account in accounts:
+            try:
+                account_data = {
+                    "id": account.id,
+                    "exchange_name": account.exchange_name,
+                    "api_key": f"{account.api_key[:8]}..." if account.api_key and len(account.api_key) > 8 else "***",
+                    "is_testnet": account.is_testnet or False,
+                    "is_active": account.is_active if account.is_active is not None else True,
+                    "created_at": account.created_at,
+                    "permissions": parse_permissions(account.permissions) if account.permissions else [],
+                    "ip_whitelist": parse_ip_whitelist(account.ip_whitelist) if account.ip_whitelist else [],
+                    "validation_status": account.validation_status or "unknown",
+                    "validation_error": account.validation_error,
+                    "last_validation": account.last_validation,
+                    "rate_limit_remaining": account.rate_limit_remaining,
+                    "rate_limit_reset": account.rate_limit_reset
+                }
+                masked_accounts.append(account_data)
+            except Exception as e:
+                logger.warning(f"处理账户 {account.id} 时出错: {e}")
+                # 即使单个账户出错，也继续处理其他账户
+                continue
+        
+        logger.info(f"成功返回 {len(masked_accounts)} 个账户信息")
+        return masked_accounts
+        
     except Exception as e:
-        # 连接恢复失败不影响账户列表返回
-        logger.warning(f"恢复交易所连接时出错: {str(e)}")
-      # Mask sensitive data in response and convert data types
-    masked_accounts = []
-    for account in accounts:
-        account_data = {
-            "id": account.id,
-            "exchange_name": account.exchange_name,
-            "api_key": f"{account.api_key[:8]}..." if len(account.api_key) > 8 else "***",
-            "is_testnet": account.is_testnet,
-            "is_active": account.is_active,
-            "created_at": account.created_at,
-            "permissions": parse_permissions(account.permissions),
-            "ip_whitelist": parse_ip_whitelist(account.ip_whitelist),
-            "validation_status": account.validation_status,
-            "validation_error": account.validation_error,
-            "last_validation": account.last_validation,
-            "rate_limit_remaining": account.rate_limit_remaining,
-            "rate_limit_reset": account.rate_limit_reset
-        }
-        masked_accounts.append(account_data)
-    
-    return masked_accounts
+        logger.error(f"获取交易所账户列表失败: {e}")
+        raise HTTPException(
+            status_code=500,
+            detail=f"获取账户列表失败: {str(e)}"
+        )
 
 @router.delete("/accounts/{account_id}")
 async def delete_exchange_account(
@@ -208,7 +222,7 @@ async def get_account_balance(
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
-    """Get real account balance from exchange"""
+    """Get real account balance from exchange - 优化版本，支持快速超时"""
     account = db.query(ExchangeAccount).filter(
         ExchangeAccount.id == account_id,
         ExchangeAccount.user_id == current_user.id
@@ -218,29 +232,72 @@ async def get_account_balance(
         raise HTTPException(status_code=404, detail="Exchange account not found")
     
     try:
-        # 使用真实API获取余额
-        result = real_exchange_manager.get_real_balance(
-            user_id=current_user.id,
-            exchange_name=account.exchange_name,
-            is_testnet=account.is_testnet
-        )
+        logger.info(f"获取账户 {account_id} ({account.exchange_name}) 的余额")
         
-        if not result["success"]:
-            raise HTTPException(
-                status_code=400,
-                detail=f"获取余额失败: {result['message']}"
+        # 使用asyncio.wait_for设置严格的超时限制
+        try:
+            result = await asyncio.wait_for(
+                real_exchange_manager.get_real_balance(
+                    user_id=current_user.id,
+                    exchange_name=account.exchange_name,
+                    is_testnet=account.is_testnet
+                ),
+                timeout=8.0  # 8秒超时
             )
+            
+            if result and result.get("success"):
+                logger.info(f"成功获取账户 {account_id} 的余额")
+                return {
+                    "success": True,
+                    "message": result.get("message", "余额获取成功"),
+                    "data": result.get("data", {})
+                }
+            else:
+                error_msg = result.get("message", "余额获取失败") if result else "API返回空结果"
+                logger.warning(f"账户 {account_id} 余额获取失败: {error_msg}")
+                return {
+                    "success": False,
+                    "message": error_msg,
+                    "data": {"error": True, "error_type": "api_failure"}
+                }
+                
+        except asyncio.TimeoutError:
+            logger.warning(f"账户 {account_id} 余额获取超时 (8秒)")
+            return {
+                "success": False,
+                "message": "余额获取超时，请检查网络连接或稍后重试",
+                "data": {"timeout": True, "error_type": "timeout"}
+            }
         
-        return {
-            "success": True,
-            "message": result["message"],
-            "data": result["data"]
-        }
-        
-    except HTTPException:
-        raise
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"获取余额时发生错误: {str(e)}")
+        error_msg = str(e)
+        logger.error(f"账户 {account_id} 余额获取异常: {error_msg}")
+        
+        # 根据错误类型提供友好的错误信息
+        if "timeout" in error_msg.lower() or "timed out" in error_msg.lower():
+            return {
+                "success": False,
+                "message": "网络超时，请稍后重试",
+                "data": {"timeout": True, "error_type": "network_timeout"}
+            }
+        elif "connection" in error_msg.lower():
+            return {
+                "success": False,
+                "message": "网络连接失败，请检查网络设置",
+                "data": {"error": True, "error_type": "connection_error"}
+            }
+        elif "authentication" in error_msg.lower() or "401" in error_msg:
+            return {
+                "success": False,
+                "message": "API认证失败，请检查API密钥配置",
+                "data": {"error": True, "error_type": "auth_error"}
+            }
+        else:
+            return {
+                "success": False,
+                "message": f"获取余额失败: {error_msg}",
+                "data": {"error": True, "error_type": "unknown_error"}
+            }
 
 @router.get("/accounts/{account_id}/ticker/{symbol}")
 async def get_ticker(

@@ -65,24 +65,42 @@ const loginRules = {
 }
 
 const handleLogin = async () => {
-          if (!loginFormRef.value) return
+          console.log('🔥 handleLogin被调用')
+          console.log('表单引用:', loginFormRef.value)
+          console.log('登录数据:', loginForm)
+          
+          if (!loginFormRef.value) {
+                    console.error('❌ 表单引用为空')
+                    return
+          }
 
           await loginFormRef.value.validate(async (valid) => {
+                    console.log('✅ 表单验证结果:', valid)
                     if (valid) {
                               loading.value = true
+                              console.log('🚀 开始登录请求...')
 
                               try {
                                         const result = await authStore.login(loginForm.username, loginForm.password)
+                                        console.log('📥 登录结果:', result)
 
                                         if (result.success) {
                                                   ElMessage.success('登录成功')
+                                                  console.log('✅ 登录成功，准备跳转')
                                                   router.push('/dashboard')
                                         } else {
+                                                  console.error('❌ 登录失败:', result.message)
                                                   ElMessage.error(result.message)
                                         }
+                              } catch (error) {
+                                        console.error('💥 登录异常:', error)
+                                        ElMessage.error('登录请求失败')
                               } finally {
                                         loading.value = false
+                                        console.log('🏁 登录流程结束')
                               }
+                    } else {
+                              console.warn('⚠️ 表单验证失败')
                     }
           })
 }

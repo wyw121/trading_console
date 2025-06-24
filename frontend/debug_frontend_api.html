@@ -1,0 +1,160 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>前端API调试</title>
+    <style>
+        body { font-family: Arial, sans-serif; margin: 20px; }
+        .section { margin: 20px 0; padding: 20px; border: 1px solid #ddd; }
+        button { padding: 10px 20px; margin: 5px; }
+        .result { margin-top: 10px; padding: 10px; background: #f5f5f5; white-space: pre-wrap; }
+        .error { background: #ffebee; color: #c62828; }
+        .success { background: #e8f5e8; color: #2e7d32; }
+    </style>
+</head>
+<body>
+    <h1>前端API调试工具</h1>
+    
+    <div class="section">
+        <h2>1. 认证测试</h2>
+        <button onclick="testLogin()">登录测试</button>
+        <button onclick="testGetUserInfo()">获取用户信息</button>
+        <div id="authResult" class="result"></div>
+    </div>
+    
+    <div class="section">
+        <h2>2. 交易所API测试</h2>
+        <button onclick="testExchangesList()">获取交易所列表</button>
+        <div id="exchangesResult" class="result"></div>
+    </div>
+    
+    <div class="section">
+        <h2>3. Dashboard API测试</h2>
+        <button onclick="testDashboardStats()">获取Dashboard统计</button>
+        <div id="dashboardResult" class="result"></div>
+    </div>
+
+    <script>
+        let token = localStorage.getItem('token') || null;
+        
+        function showResult(elementId, content, isError = false) {
+            const element = document.getElementById(elementId);
+            element.textContent = content;
+            element.className = `result ${isError ? 'error' : 'success'}`;
+        }
+        
+        async function apiCall(url, options = {}) {
+            const baseURL = 'http://localhost:8000/api';
+            const headers = {
+                'Content-Type': 'application/json',
+                ...options.headers
+            };
+            
+            if (token) {
+                headers.Authorization = `Bearer ${token}`;
+            }
+            
+            const response = await fetch(`${baseURL}${url}`, {
+                ...options,
+                headers
+            });
+            
+            return response;
+        }
+        
+        async function testLogin() {
+            try {
+                const formData = new FormData();
+                formData.append('username', 'testuser');
+                formData.append('password', 'testpass123');
+                
+                const response = await fetch('http://localhost:8000/api/auth/login', {
+                    method: 'POST',
+                    body: formData
+                });
+                
+                if (response.ok) {
+                    const data = await response.json();
+                    token = data.access_token;
+                    localStorage.setItem('token', token);
+                    showResult('authResult', `登录成功！\nToken: ${token.substring(0, 50)}...`);
+                } else {
+                    const error = await response.text();
+                    showResult('authResult', `登录失败: ${error}`, true);
+                }
+            } catch (error) {
+                showResult('authResult', `登录异常: ${error.message}`, true);
+            }
+        }
+        
+        async function testGetUserInfo() {
+            try {
+                if (!token) {
+                    showResult('authResult', '请先登录', true);
+                    return;
+                }
+                
+                const response = await apiCall('/auth/me');
+                
+                if (response.ok) {
+                    const data = await response.json();
+                    showResult('authResult', `用户信息：\n${JSON.stringify(data, null, 2)}`);
+                } else {
+                    const error = await response.text();
+                    showResult('authResult', `获取用户信息失败: ${error}`, true);
+                }
+            } catch (error) {
+                showResult('authResult', `获取用户信息异常: ${error.message}`, true);
+            }
+        }
+        
+        async function testExchangesList() {
+            try {
+                if (!token) {
+                    showResult('exchangesResult', '请先登录', true);
+                    return;
+                }
+                
+                const response = await apiCall('/exchanges/');
+                
+                if (response.ok) {
+                    const data = await response.json();
+                    showResult('exchangesResult', `交易所列表：\n${JSON.stringify(data, null, 2)}`);
+                } else {
+                    const error = await response.text();
+                    showResult('exchangesResult', `获取交易所列表失败: ${error}`, true);
+                }
+            } catch (error) {
+                showResult('exchangesResult', `获取交易所列表异常: ${error.message}`, true);
+            }
+        }
+        
+        async function testDashboardStats() {
+            try {
+                if (!token) {
+                    showResult('dashboardResult', '请先登录', true);
+                    return;
+                }
+                
+                const response = await apiCall('/dashboard/stats');
+                
+                if (response.ok) {
+                    const data = await response.json();
+                    showResult('dashboardResult', `Dashboard统计：\n${JSON.stringify(data, null, 2)}`);
+                } else {
+                    const error = await response.text();
+                    showResult('dashboardResult', `获取Dashboard统计失败: ${error}`, true);
+                }
+            } catch (error) {
+                showResult('dashboardResult', `获取Dashboard统计异常: ${error.message}`, true);
+            }
+        }
+        
+        // 页面加载时检查token
+        if (token) {
+            showResult('authResult', `已有token: ${token.substring(0, 50)}...`);
+        }
+    </script>
+</body>
+</html>

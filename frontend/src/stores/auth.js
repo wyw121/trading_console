@@ -10,10 +10,11 @@ export const useAuthStore = defineStore('auth', () => {
 
           const login = async (username, password) => {
                     try {
+                              // 使用FormData格式 (OAuth2PasswordRequestForm期望的格式)
                               const formData = new FormData()
                               formData.append('username', username)
                               formData.append('password', password)
-
+                              
                               const response = await api.post('/auth/login', formData)
 
                               token.value = response.data.access_token

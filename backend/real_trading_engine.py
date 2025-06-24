@@ -286,8 +286,7 @@ class RealExchangeManager:
                     'sandbox': is_testnet,
                     'enableRateLimit': True,
                     'rateLimit': 1000,
-                }
-                
+                }                
                 if account.api_passphrase:
                     config['passphrase'] = account.api_passphrase
                 
@@ -296,7 +295,15 @@ class RealExchangeManager:
                 logger.info(f"重新创建连接成功: {key}")
             
             exchange = self.exchanges[key]
-            balance = await exchange.fetch_balance()
+            
+            # 使用异步包装器来调用同步的ccxt方法
+            import asyncio
+            import concurrent.futures
+            
+            # 在线程池中执行同步的fetch_balance调用
+            loop = asyncio.get_event_loop()
+            with concurrent.futures.ThreadPoolExecutor() as executor:
+                balance = await loop.run_in_executor(executor, exchange.fetch_balance)
             
             return {
                 "success": True,
