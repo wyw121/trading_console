@@ -1,5 +1,5 @@
 from pydantic import BaseModel, EmailStr
-from typing import Optional, List
+from typing import Optional, List, Dict
 from datetime import datetime
 
 # User models
@@ -8,6 +8,10 @@ class UserBase(BaseModel):
     email: EmailStr
 
 class UserCreate(UserBase):
+    password: str
+
+class UserLogin(BaseModel):
+    username: str
     password: str
 
 class UserResponse(UserBase):
@@ -33,6 +37,8 @@ class ExchangeAccountBase(BaseModel):
     api_secret: str
     api_passphrase: Optional[str] = None
     is_testnet: bool = False
+    permissions: Optional[List[str]] = None
+    ip_whitelist: Optional[List[str]] = None
 
 class ExchangeAccountCreate(ExchangeAccountBase):
     pass
@@ -52,9 +58,28 @@ class ExchangeAccountResponse(BaseModel):
     is_testnet: bool
     is_active: bool
     created_at: datetime
+    permissions: Optional[List[str]] = None
+    ip_whitelist: Optional[List[str]] = None
+    validation_status: Optional[str] = None
+    validation_error: Optional[str] = None
+    last_validation: Optional[datetime] = None
+    rate_limit_remaining: Optional[int] = None
+    rate_limit_reset: Optional[datetime] = None
     
     class Config:
         from_attributes = True
+
+class PermissionValidationResponse(BaseModel):
+    """权限验证响应模型"""
+    success: bool
+    permissions: Optional[List[str]] = None
+    ip_address: Optional[str] = None
+    error_message: Optional[str] = None
+    rate_limit_info: Optional[Dict] = None
+
+class IPWhitelistUpdate(BaseModel):
+    """IP白名单更新模型"""
+    ip_whitelist: List[str]
 
 # Strategy models
 class StrategyBase(BaseModel):

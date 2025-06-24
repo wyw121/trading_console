@@ -37,9 +37,24 @@ class ExchangeAccount(Base):
     api_key = Column(Text, nullable=False)  # encrypted
     api_secret = Column(Text, nullable=False)  # encrypted
     api_passphrase = Column(Text)  # for OKEx, encrypted
+    
+    # OKX API 权限配置
+    permissions = Column(Text)  # JSON格式存储: ["read", "trade", "withdraw"]
+    ip_whitelist = Column(Text)  # 逗号分隔的IP地址列表
+    
+    # API配置状态
     is_testnet = Column(Boolean, default=False)
     is_active = Column(Boolean, default=True)
+    last_validation = Column(DateTime)  # 最后验证时间
+    validation_status = Column(String(20), default="pending")  # pending, valid, invalid
+    validation_error = Column(Text)  # 验证错误信息
+    
+    # 速率限制跟踪
+    rate_limit_remaining = Column(Integer)  # 剩余调用次数
+    rate_limit_reset = Column(DateTime)  # 速率限制重置时间
+    
     created_at = Column(DateTime, default=datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
     
     # Relationships
     user = relationship("User", back_populates="exchange_accounts")

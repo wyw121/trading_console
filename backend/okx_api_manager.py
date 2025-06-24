@@ -12,6 +12,8 @@ import time
 import json
 import logging
 from typing import Dict, Any, Optional
+from datetime import datetime
+from okx_compliance_manager import OKXComplianceManager, ValidationResult
 
 logger = logging.getLogger(__name__)
 
@@ -24,6 +26,9 @@ class OKXAPIManager:
         self.secret_key = secret_key
         self.passphrase = passphrase
         self.base_url = "https://www.okx.com"
+        
+        # 初始化合规性管理器
+        self.compliance_manager = OKXComplianceManager(use_proxy=use_proxy)
         
         # 设置代理
         if use_proxy:
@@ -40,6 +45,17 @@ class OKXAPIManager:
             for key in ['HTTP_PROXY', 'HTTPS_PROXY', 'http_proxy', 'https_proxy']:
                 if key in os.environ:
                     del os.environ[key]
+    
+    async def validate_credentials(self, is_testnet: bool = False) -> ValidationResult:
+        """验证API凭据并获取权限信息"""
+        return await self.compliance_manager.validate_api_credentials(
+            self.api_key, self.secret_key, self.passphrase, is_testnet
+        )
+    
+    def check_operation_permission(self, account_permissions: list, operation: str) -> bool:
+        """检查是否有执行特定操作的权限"""
+        required_permissions = self.compliance_manager.get_permission_requirements(operation)
+        return all(perm in account_permissions for perm in required_permissions)
     
     def _create_signature(self, timestamp: str, method: str, request_path: str, body: str = '') -> str:
         """创建OKX API签名"""

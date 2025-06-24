@@ -10,13 +10,14 @@ from routers import auth, exchange, strategies, trades, dashboard
 # 加载环境变量（包括SSR代理配置）
 load_dotenv()
 
-# 设置代理环境变量（确保所有HTTP请求都通过SSR代理）
-if os.getenv('HTTP_PROXY'):
-    os.environ['HTTP_PROXY'] = os.getenv('HTTP_PROXY')
-    os.environ['HTTPS_PROXY'] = os.getenv('HTTPS_PROXY')
-    os.environ['http_proxy'] = os.getenv('http_proxy')
-    os.environ['https_proxy'] = os.getenv('https_proxy')
-    print(f"✅ 代理配置已加载: {os.getenv('HTTPS_PROXY')}")
+# 设置代理环境变量（仅用于外部API调用，不影响本地服务）
+# 临时注释掉全局代理设置，避免影响本地连接
+# if os.getenv('HTTP_PROXY'):
+#     os.environ['HTTP_PROXY'] = os.getenv('HTTP_PROXY')
+#     os.environ['HTTPS_PROXY'] = os.getenv('HTTPS_PROXY')
+#     os.environ['http_proxy'] = os.getenv('http_proxy')
+#     os.environ['https_proxy'] = os.getenv('https_proxy')
+#     print(f"✅ 代理配置已加载: {os.getenv('HTTPS_PROXY')}")
 
 # Create FastAPI app
 app = FastAPI(

@@ -219,7 +219,26 @@ class SimpleRealExchangeManager:
                 "data": None
             }
     
-    def get_supported_exchanges(self) -> List[str]:
+    def add_exchange_account(self, user_id: int, exchange_name: str, 
+                           api_key: str, api_secret: str, api_passphrase: str = None, 
+                           is_testnet: bool = False) -> Dict:
+        """添加交易所账户到管理器"""
+        try:
+            exchange_name = exchange_name.lower()
+            
+            if exchange_name in ['okx', 'okex']:
+                # 添加OKX账户
+                if self.add_okx_account(user_id, api_key, api_secret, api_passphrase):
+                    logger.info(f"成功添加OKX账户: 用户{user_id}")
+                    return {"success": True, "message": "OKX账户添加成功"}
+                else:
+                    return {"success": False, "message": "OKX账户添加失败"}
+            else:
+                return {"success": False, "message": f"不支持的交易所: {exchange_name}"}
+                
+        except Exception as e:
+            logger.error(f"添加交易所账户失败: {e}")
+            return {"success": False, "message": f"添加账户失败: {str(e)}"}
         """获取支持的交易所列表"""
         return ['okx', 'binance']
     
@@ -235,13 +254,12 @@ class SimpleRealExchangeManager:
                 # 如果是OKX账户且有API密钥
                 if exchange_name in ['okx', 'okex']:
                     if hasattr(account, 'api_key') and account.api_key:
-                        # 这里应该从数据库解密API密钥，现在先用固定的测试密钥
-                        # 实际项目中需要从数据库安全地获取解密后的API密钥
-                        test_api_key = "edb07d2e-8fb5-46e8-84b8-5e1795c71ac0"
-                        test_secret = "CD6A497EEB00AA2DC60B2B0974DD2485"
-                        test_passphrase = "vf5Y3UeUFiz6xfF!"
+                        # 使用数据库中存储的API密钥（在生产环境中应该解密）
+                        api_key = account.api_key
+                        api_secret = account.api_secret
+                        api_passphrase = account.api_passphrase
                         
-                        if self.add_okx_account(user_id, test_api_key, test_secret, test_passphrase):
+                        if self.add_okx_account(user_id, api_key, api_secret, api_passphrase):
                             restored_count += 1
                             logger.info(f"成功恢复OKX连接: 用户{user_id}")
                         else:

@@ -14,6 +14,32 @@ logger = logging.getLogger(__name__)
 
 def check_okx_connectivity() -> bool:
     """Check if OKX API is accessible"""
+    import os
+    from dotenv import load_dotenv
+    
+    # Load environment variables
+    load_dotenv()
+    
+    # Get proxy settings
+    use_proxy = os.getenv('USE_PROXY', 'false').lower() == 'true'
+    proxies = None
+    
+    if use_proxy:
+        proxy_host = os.getenv('PROXY_HOST', '127.0.0.1')
+        proxy_port = os.getenv('PROXY_PORT', '1080')
+        proxy_type = os.getenv('PROXY_TYPE', 'socks5')
+        
+        if proxy_type == 'socks5':
+            proxy_url = f"socks5h://{proxy_host}:{proxy_port}"
+        else:
+            proxy_url = f"{proxy_type}://{proxy_host}:{proxy_port}"
+            
+        proxies = {
+            'http': proxy_url,
+            'https': proxy_url
+        }
+        logger.info(f"Using proxy for OKX connectivity check: {proxy_url}")
+    
     test_urls = [
         'https://www.okx.com/api/v5/public/time',
         'https://aws.okx.com/api/v5/public/time',
@@ -21,11 +47,12 @@ def check_okx_connectivity() -> bool:
     
     for url in test_urls:
         try:
-            response = requests.get(url, timeout=5)
+            response = requests.get(url, timeout=5, proxies=proxies)
             if response.status_code == 200:
                 logger.info(f"OKX API accessible via {url}")
                 return True
-        except Exception:
+        except Exception as e:
+            logger.debug(f"Failed to connect to {url}: {e}")
             continue
     
     logger.warning("OKX API not accessible, will use mock exchange for testing")
@@ -100,6 +127,31 @@ class MockOKXExchange:
 class ExchangeManager:
     def __init__(self):
         self.exchanges: Dict[str, ccxt.Exchange] = {}
+        self._connection_cache = {}  # Cache connection status
+        self._mock_mode = {}  # Track which exchanges are in mock mode
+        
+    def _should_use_mock(self, exchange_name: str) -> bool:
+        """Determine if we should use mock exchange"""
+        if exchange_name.lower() in ['okx', 'okex']:
+            # Check cache first (cache for 5 minutes)
+            cache_key = f"{exchange_name}_connectivity"
+            if cache_key in self._connection_cache:
+                cached_time, cached_result = self._connection_cache[cache_key]
+                if datetime.now().timestamp() - cached_time < 300:  # 5 minutes
+                    return not cached_result
+            
+            # Test connectivity
+            connectivity = check_okx_connectivity()
+            self._connection_cache[cache_key] = (datetime.now().timestamp(), connectivity)
+            
+            if not connectivity:
+                logger.warning(f"OKX API not accessible, enabling mock mode for {exchange_name}")
+                self._mock_mode[exchange_name] = True
+                return True
+            else:
+                self._mock_mode[exchange_name] = False
+                
+        return False
     
     def get_exchange(self, exchange_account: ExchangeAccount) -> ccxt.Exchange:
         """Get exchange instance for a user's exchange account"""
@@ -116,16 +168,21 @@ class ExchangeManager:
                 'enableRateLimit': True,
                 'timeout': 30000,
             }
-            
-            # Special handling for OKX
+              # Special handling for OKX
             if exchange_name == 'okex':
                 if exchange_account.api_passphrase:
                     config['passphrase'] = exchange_account.api_passphrase
                 
-                # Check connectivity and use mock if needed
-                if not check_okx_connectivity():
-                    logger.warning("Using mock OKX exchange due to connectivity issues")
-                    self.exchanges[key] = MockOKXExchange(config)
+                # Check if we should use mock mode
+                if self._should_use_mock(exchange_name):
+                    logger.info("Using mock OKX exchange due to connectivity issues")
+                    mock_config = {
+                        'apiKey': exchange_account.api_key,
+                        'secret': exchange_account.api_secret,
+                        'passphrase': exchange_account.api_passphrase,
+                        'sandbox': exchange_account.is_testnet,
+                    }
+                    self.exchanges[key] = MockOKXExchange(mock_config)
                     return self.exchanges[key]
                 
                 # Real OKX configuration
@@ -146,8 +203,7 @@ class ExchangeManager:
                     self.exchanges[key] = MockOKXExchange(config)
                     return self.exchanges[key]
                 else:
-                    raise
-        
+                    raise        
         return self.exchanges[key]
     
     async def get_balance(self, exchange_account: ExchangeAccount) -> Dict:
@@ -155,15 +211,34 @@ class ExchangeManager:
         try:
             exchange = self.get_exchange(exchange_account)
             logger.info(f"Fetching balance for {exchange_account.exchange_name}")
-            balance = await exchange.fetch_balance()
+            
+            # Add timeout for balance fetching
+            balance = await asyncio.wait_for(
+                exchange.fetch_balance(), 
+                timeout=5.0  # 5 second timeout
+            )
             logger.info(f"Balance fetched successfully")
             return balance
+        except asyncio.TimeoutError:
+            logger.warning(f"Balance fetch timeout for {exchange_account.exchange_name}, using mock")
+            # Use mock exchange for timeout
+            config = {
+                'apiKey': exchange_account.api_key,
+                'secret': exchange_account.api_secret,
+                'passphrase': exchange_account.api_passphrase,
+                'sandbox': exchange_account.is_testnet,
+            }
+            mock_exchange = MockOKXExchange(config)
+            return await mock_exchange.fetch_balance()
         except Exception as e:
             error_msg = f"Error fetching balance for {exchange_account.exchange_name}: {str(e)}"
             logger.error(error_msg)
             
             # For OKX network errors, try mock exchange
-            if exchange_account.exchange_name.lower() == 'okex' and "okex GET https://www.okx.com" in str(e):
+            if (exchange_account.exchange_name.lower() == 'okex' and 
+                ("okex GET https://www.okx.com" in str(e) or 
+                 "timeout" in str(e).lower() or
+                 "exceeded" in str(e).lower())):
                 logger.warning("OKX API failed, trying mock exchange...")
                 try:
                     config = {

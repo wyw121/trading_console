@@ -1,10 +1,10 @@
 from fastapi import APIRouter, Depends, HTTPException, status
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from sqlalchemy.orm import Session
-from sqlalchemy import func
 import schemas
-from database import get_db, User, Strategy, Trade, ExchangeAccount
+from database import get_db, User
 from auth import verify_token
+from simple_dashboard_service import SimpleDashboardService
 
 router = APIRouter(prefix="/dashboard", tags=["dashboard"])
 security = HTTPBearer()
@@ -27,54 +27,17 @@ async def get_dashboard_stats(
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
-    """Get dashboard statistics"""
-    # Get strategy stats
-    total_strategies = db.query(Strategy).filter(Strategy.user_id == current_user.id).count()
-    active_strategies = db.query(Strategy).filter(
-        Strategy.user_id == current_user.id,
-        Strategy.is_active == True
-    ).count()
-    
-    # Get trade stats
-    total_trades = db.query(Trade).filter(Trade.user_id == current_user.id).count()
-    
-    # Calculate total P&L
-    total_profit_loss = db.query(func.sum(Trade.profit_loss)).filter(
-        Trade.user_id == current_user.id,
-        Trade.status == "filled"
-    ).scalar() or 0.0
-    
-    # Get account balances (placeholder - in real implementation, fetch from exchanges)
-    account_balances = []
-    exchange_accounts = db.query(ExchangeAccount).filter(
-        ExchangeAccount.user_id == current_user.id,
-        ExchangeAccount.is_active == True
-    ).all()
-    
-    for account in exchange_accounts:
-        try:
-            from trading_engine import exchange_manager
-            balance = await exchange_manager.get_balance(account)
-            
-            for currency, data in balance.get('total', {}).items():
-                if data > 0:  # Only show non-zero balances
-                    account_balances.append(schemas.AccountBalance(
-                        exchange=account.exchange_name,
-                        currency=currency,
-                        free=balance.get('free', {}).get(currency, 0),
-                        used=balance.get('used', {}).get(currency, 0),
-                        total=data
-                    ))
-        except Exception:
-            # If we can't fetch balance, skip this account
-            pass
-    
-    return schemas.DashboardStats(
-        total_strategies=total_strategies,
-        active_strategies=active_strategies,
-        total_trades=total_trades,
-        total_profit_loss=total_profit_loss,
-        today_trades=0,  # TODO: Calculate today's trades
-        today_profit_loss=0.0,  # TODO: Calculate today's profit/loss
-        account_balances=account_balances
-    )
+    """获取Dashboard统计信息（简化版本）"""
+    try:
+        return await SimpleDashboardService.get_dashboard_stats_safe(current_user.id, db)
+    except Exception as e:
+        # 即使出错也返回基础数据
+        return schemas.DashboardStats(
+            total_strategies=0,
+            active_strategies=0,
+            total_trades=0,
+            total_profit_loss=0.0,
+            today_trades=0,
+            today_profit_loss=0.0,
+            account_balances=[]
+        )
